@@ -75,6 +75,7 @@
     white-space:nowrap;
   }
   .points.pulse{ animation:pulse .28s ease; }
+  .points.wide{ font-size:clamp(90px, min(52vh, 29vw), 550px); }
   @keyframes pulse{ 0%{transform:translate(-50%,-50%) scale(1);} 40%{transform:translate(-50%,-50%) scale(1.06);} 100%{transform:translate(-50%,-50%) scale(1);} }
 
   /* Elapsed match timer, floating dead-center between the two score numbers */
@@ -818,6 +819,8 @@
   function render(pulseTeam){
     el.ptsA.textContent = displayPts('a');
     el.ptsB.textContent = displayPts('b');
+    el.ptsA.classList.toggle('wide', el.ptsA.textContent === 'AD');
+    el.ptsB.classList.toggle('wide', el.ptsB.textContent === 'AD');
     el.nameA.innerHTML = playerLabelHTML('a');
     el.nameB.innerHTML = playerLabelHTML('b');
 
