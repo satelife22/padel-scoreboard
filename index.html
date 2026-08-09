@@ -900,7 +900,7 @@
   });
 
   // Share block: QR code + copy link, based on wherever this page is actually hosted
-  const shareUrl = window.location.href.split('#')[0].split('?')[0];
+  const shareUrl = 'https://satelife22.github.io/padel-scoreboard/';
   document.getElementById('shareUrlText').textContent = shareUrl;
   document.getElementById('qrImg').src =
     'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(shareUrl);
