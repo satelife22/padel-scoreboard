@@ -467,12 +467,15 @@
 
   const DB_URL = 'https://padel-scoreboard-8f11c-default-rtdb.asia-southeast1.firebasedatabase.app';
 
-  let lastSyncedJSON = null;
+  let localDirty = false; // set true only by local mutations; cleared once written
+  function markDirty(){ localDirty = true; }
 
   function persist(){
-    const json = JSON.stringify(state);
-    if (json === lastSyncedJSON) return; // nothing changed since our last write/read
-    lastSyncedJSON = json;
+    if (!localDirty) return; // this call came from adopting a remote/echoed update — don't re-broadcast it
+    localDirty = false;
+    const payload = Object.assign({}, state);
+    delete payload.voiceOn; // personal preference — never shared
+    const json = JSON.stringify(payload);
     fetch(DB_URL + '/match.json', {
       method: 'PUT',
       headers: {'Content-Type': 'application/json'},
@@ -704,6 +707,7 @@
 
   function addPoint(team){
     if (state.matchOver) return;
+    markDirty();
     const before = clone(state);
     history.push(before);
     if (history.length > 200) history.shift();
@@ -752,6 +756,7 @@
   function undo(){
     if (!history.length) return;
     state = history.pop();
+    markDirty();
     render(null);
   }
 
@@ -765,6 +770,7 @@
     state.initialServerIndex = initialServerIndex; state.serverIndex = initialServerIndex;
     state.voiceOn = voiceOn; state.serveOrder = serveOrder;
     history = [];
+    markDirty();
     render(null);
     updateTimer();
     announceNewGame();
@@ -787,6 +793,7 @@
     keys.forEach(k => { const tmp = state[k].a; state[k].a = state[k].b; state[k].b = tmp; });
     state.setHistory = state.setHistory.map(s => ({a:s.b, b:s.a}));
     state.serveOrder = state.serveOrder.map(slot => ({t: other(slot.t), p: slot.p}));
+    markDirty();
     render(null);
     speak('Change of ends.');
   }
@@ -954,6 +961,7 @@
     if (!btn) return;
     e.stopPropagation();
     state.setsToWin = Number(btn.dataset.v);
+    markDirty();
     render(null);
   });
 
@@ -1026,6 +1034,7 @@
     state.serverIndex = 0;
     state.initialServerIndex = 0;
     state.servingActive = true;
+    markDirty();
     el.playerSetup.classList.remove('show');
     render(null);
     speak(serverName() + ' to serve.' + (isFreshMatch() ? ' Love all.' : ''));
@@ -1051,6 +1060,7 @@
     e.stopPropagation();
     state.servingActive = false;
     state.players = {a:['',''], b:['','']};
+    markDirty();
     el.playerSetup.classList.remove('show');
     render(null);
   });
@@ -1105,19 +1115,14 @@
   function handleMatchUpdate(remote){
     if (!remote){
       // Nothing in the shared database yet — this device seeds the first record.
+      markDirty();
       persist();
-      handleFreshCheck();
-      return;
-    }
-    const remoteJSON = JSON.stringify(remote);
-    if (remoteJSON === lastSyncedJSON){
       handleFreshCheck();
       return;
     }
     const voiceOn = state.voiceOn; // personal — keep this device's own setting
     state = Object.assign(freshState(), remote);
     state.voiceOn = voiceOn;
-    lastSyncedJSON = remoteJSON;
     render(null); // repaint only — no voice announcement for changes made on other devices
     handleFreshCheck();
   }
