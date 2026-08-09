@@ -1111,17 +1111,22 @@
   }
   const commandStream = new EventSource(DB_URL + '/commands.json');
   commandStream.addEventListener('put', (e) => {
-    // Initial snapshot on connect — mark any pre-existing commands as already handled
-    // so reopening the app doesn't replay old taps.
     try {
       const msg = JSON.parse(e.data);
-      if (msg.path === '/' && msg.data){
-        Object.keys(msg.data).forEach(k => processedCommandKeys.add(k));
+      if (msg.path === '/'){
+        // Initial snapshot on connect — mark any pre-existing commands as already
+        // handled so reopening the app doesn't replay old taps.
+        if (msg.data) Object.keys(msg.data).forEach(k => processedCommandKeys.add(k));
+      } else {
+        // A single new/changed command — this is the live case for a Shortcut's POST.
+        const key = (msg.path || '').replace(/^\//, '');
+        handleCommandEntry(key, msg.data);
       }
     } catch(err){ /* ignore malformed event */ }
   });
   commandStream.addEventListener('patch', (e) => {
-    // A new command was added after we connected — this is the live case.
+    // Multi-child updates land here — handled defensively, though a single push()
+    // normally arrives via 'put' above.
     try {
       const msg = JSON.parse(e.data);
       const key = (msg.path || '').replace(/^\//, '');
