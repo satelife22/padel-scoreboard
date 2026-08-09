@@ -50,13 +50,20 @@
   .half.a .teamRow{ justify-content:flex-start; padding-left:14px; }
   .half.b .teamRow{ justify-content:flex-end; padding-right:14px; }
   .pill{
-    display:flex; align-items:center; gap:7px;
-    background:#101E19;
-    border:1px solid rgba(255,255,255,0.18);
+    display:flex; align-items:center; gap:8px;
+    background:#1B2B24;
+    color:var(--net);
+    border:1px solid rgba(255,255,255,0.14);
     border-radius:999px; padding:9px 17px;
     font-weight:700; letter-spacing:.03em;
     font-size:clamp(15px, 2.3vh, 19px);
+    box-shadow:0 3px 10px rgba(0,0,0,0.3);
   }
+  .pill::before{
+    content:''; width:8px; height:8px; border-radius:50%; flex-shrink:0;
+  }
+  .half.a .pill::before{ background:var(--teamA); }
+  .half.b .pill::before{ background:var(--teamB); }
 
   .points{
     position:absolute; top:50%; left:50%;
