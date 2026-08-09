@@ -1174,11 +1174,20 @@
   document.getElementById('quickStartBtn').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('startPrompt').classList.remove('show');
+    state.startTime = Date.now();
+    state.setStartTime = Date.now();
+    markDirty();
+    updateTimer();
+    render(null);
     announceNewGame();
   });
   document.getElementById('setupNewGameBtn').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('startPrompt').classList.remove('show');
+    state.startTime = Date.now();
+    state.setStartTime = Date.now();
+    markDirty();
+    updateTimer();
     openPlayerSetup();
   });
 
