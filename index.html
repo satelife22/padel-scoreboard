@@ -179,13 +179,16 @@
   }
   #overlay .winSub{
     font-size:clamp(14px,2.4vh,20px); opacity:.7; letter-spacing:.08em; text-transform:uppercase; margin-bottom:28px;
+    text-align:center;
   }
+  #overlay .panelBtns{ display:flex; gap:10px; }
   #overlay button{
     font-family:'Barlow Condensed', sans-serif;
     font-weight:700; letter-spacing:.08em; text-transform:uppercase;
     font-size:16px; padding:14px 28px; border-radius:10px;
     background:var(--net); color:#101816; border:none; cursor:pointer;
   }
+  #overlay .ghostBtn{ background:rgba(242,239,230,0.1) !important; color:var(--net) !important; }
 
   /* Custom confirm dialog — native confirm() is silently blocked in standalone home-screen apps on iOS */
   #confirmModal{
@@ -200,6 +203,18 @@
   #confirmModal .panelBtns button{ }
   #confirmYes{ background:rgba(232,90,54,0.85); color:#1a0800; }
   #confirmNo{ background:var(--net); color:#101816; }
+
+  #startPrompt{
+    position:fixed; inset:0; z-index:80;
+    background:rgba(6,12,10,0.94);
+    display:none; align-items:center; justify-content:center;
+    padding: 20px 16px;
+  }
+  #startPrompt.show{ display:flex; }
+  #startPrompt .panel{ margin:0; }
+  #startPrompt p{ margin:0 0 22px; font-size:15px; line-height:1.4; opacity:.75; }
+  #quickStartBtn{ background:rgba(242,239,230,0.1) !important; color:var(--net) !important; }
+  #setupNewGameBtn{ background:var(--net); color:#101816; }
 
   /* Settings panel */
   #settings{
@@ -341,6 +356,17 @@
 <div id="timerBar">0'</div>
 <div id="clockBar"></div>
 <div id="voiceUnlockBanner">Tap anywhere once to enable voice</div>
+
+<div id="startPrompt">
+  <div class="panel">
+    <h2>Ready to play?</h2>
+    <p>Quick Start jumps straight in with Team A / Team B. Set Up New Game lets you add player names and pick who serves first.</p>
+    <div class="panelBtns">
+      <button id="quickStartBtn" class="ghostBtn">Quick Start</button>
+      <button id="setupNewGameBtn">Set Up New Game</button>
+    </div>
+  </div>
+</div>
 <div id="miniTable">
   <div class="mtHead" id="mtHead"></div>
   <div class="mtRow team-a" id="mtRowA"><span class="mtLabel"></span></div>
@@ -353,8 +379,11 @@
 
 <div id="overlay">
   <div class="winTitle" id="winTitle">TEAM A WINS</div>
-  <div class="winSub">Match complete</div>
-  <button id="newMatchBtn">New Match</button>
+  <div class="winSub">Match complete — play again?</div>
+  <div class="panelBtns">
+    <button id="newMatchBtn">Yes, Play Again</button>
+    <button id="dismissOverlayBtn" class="ghostBtn">Not Now</button>
+  </div>
 </div>
 
 <div id="settings">
@@ -496,6 +525,7 @@
   }
 
   let state = freshState();
+  let overlayDismissed = false;
   const savedVoicePref = loadVoicePref();
   if (typeof savedVoicePref === 'boolean') state.voiceOn = savedVoicePref;
   let history = [];
@@ -616,9 +646,30 @@
   let lastEvent = null; // set by winGame/winSet during a point, read by announcePoint after
   let changeEndsPending = false; // set when a change of ends is due (every 4 games)
 
+  function recordMatchHistory(){
+    try {
+      const record = {
+        ts: Date.now(),
+        teamA: teamBoxLabel('a'),
+        teamB: teamBoxLabel('b'),
+        winner: state.winner,
+        setsA: state.sets.a,
+        setsB: state.sets.b,
+        setHistory: state.setHistory,
+        durationMins: Math.max(0, Math.round((Date.now() - state.startTime) / 60000))
+      };
+      fetch(DB_URL + '/history.json', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(record)
+      }).catch(() => { /* offline — this one match's history entry won't save, not critical */ });
+    } catch(err){ /* ignore */ }
+  }
+
   function announcePoint(team, before){
     const changeEndsMsg = changeEndsPending ? ' Change ends.' : '';
     if (state.matchOver && !before.matchOver){
+      recordMatchHistory();
       speak('Game, set and match to ' + teamAnnounceName(state.winner) + '.');
       return;
     }
@@ -770,6 +821,7 @@
     state.initialServerIndex = initialServerIndex; state.serverIndex = initialServerIndex;
     state.voiceOn = voiceOn; state.serveOrder = serveOrder;
     history = [];
+    overlayDismissed = false;
     markDirty();
     render(null);
     updateTimer();
@@ -862,7 +914,7 @@
       target.classList.add('pulse');
     }
 
-    if (state.matchOver){
+    if (state.matchOver && !overlayDismissed){
       el.winTitle.textContent = state.names[state.winner] + ' WINS';
       el.overlay.classList.add('show');
     } else {
@@ -920,6 +972,11 @@
   });
   document.getElementById('newMatchBtn').addEventListener('click', (e) => {
     e.stopPropagation(); resetMatch();
+  });
+  document.getElementById('dismissOverlayBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    overlayDismissed = true;
+    el.overlay.classList.remove('show');
   });
 
   document.getElementById('voiceToggle').addEventListener('click', (e) => {
@@ -1108,9 +1165,22 @@
   function handleFreshCheck(){
     if (firstSync){
       firstSync = false;
-      if (isFreshMatch()) announceNewGame();
+      if (isFreshMatch()) showStartPrompt();
     }
   }
+  function showStartPrompt(){
+    document.getElementById('startPrompt').classList.add('show');
+  }
+  document.getElementById('quickStartBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('startPrompt').classList.remove('show');
+    announceNewGame();
+  });
+  document.getElementById('setupNewGameBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('startPrompt').classList.remove('show');
+    openPlayerSetup();
+  });
 
   function handleMatchUpdate(remote){
     if (!remote){
