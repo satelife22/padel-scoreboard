@@ -490,7 +490,8 @@
       tbStartServerIndex:0,
       tbPointsPlayed:0,
       startTime:Date.now(),
-      setStartTime:Date.now()
+      setStartTime:Date.now(),
+      matchStarted:false
     };
   }
 
@@ -820,6 +821,7 @@
     state.players = players; state.servingActive = servingActive;
     state.initialServerIndex = initialServerIndex; state.serverIndex = initialServerIndex;
     state.voiceOn = voiceOn; state.serveOrder = serveOrder;
+    state.matchStarted = true;
     history = [];
     overlayDismissed = false;
     markDirty();
@@ -1165,28 +1167,33 @@
   function handleFreshCheck(){
     if (firstSync){
       firstSync = false;
-      if (isFreshMatch()) showStartPrompt();
+      if (!state.matchStarted) showStartPrompt();
     }
   }
   function showStartPrompt(){
     document.getElementById('startPrompt').classList.add('show');
   }
+  function beginFreshMatch(){
+    const voiceOn = state.voiceOn, setsToWin = state.setsToWin;
+    state = freshState();
+    state.voiceOn = voiceOn;
+    state.setsToWin = setsToWin;
+    state.matchStarted = true;
+    markDirty();
+  }
   document.getElementById('quickStartBtn').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('startPrompt').classList.remove('show');
-    state.startTime = Date.now();
-    state.setStartTime = Date.now();
-    markDirty();
-    updateTimer();
+    beginFreshMatch();
     render(null);
+    updateTimer();
     announceNewGame();
   });
   document.getElementById('setupNewGameBtn').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('startPrompt').classList.remove('show');
-    state.startTime = Date.now();
-    state.setStartTime = Date.now();
-    markDirty();
+    beginFreshMatch();
+    render(null);
     updateTimer();
     openPlayerSetup();
   });
