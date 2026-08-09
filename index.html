@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>Padel Score</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A1612;
+    --teamA:#D7E85B;
+    --teamA-ink:#16210C;
+    --teamB:#1C6FEB;
+    --teamB-ink:#EAF1FF;
+    --net:#F2EFE6;
+    --dim:rgba(242,239,230,0.45);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent; user-select:none; -webkit-user-select:none;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--bg); overflow:hidden;
+    font-family:'Barlow Condensed', sans-serif;
+    overscroll-behavior:none;
+    touch-action:manipulation;
+  }
+  #app{
+    position:fixed; inset:0;
+    display:flex; flex-direction:row;
+  }
+  .half{
+    position:relative;
+    flex:1; height:100%;
+    display:block;
+    cursor:pointer;
+    padding:0;
+    transition:filter .12s ease;
+  }
+  .half:active{ filter:brightness(1.12); }
+  .half.a{ background:var(--teamA); color:var(--teamA-ink); }
+  .half.b{ background:var(--teamB); color:var(--teamB-ink); }
+
+  .teamRow{
+    position:absolute; top:calc(env(safe-area-inset-top) + 10px); left:0; right:0;
+    display:flex; align-items:center; justify-content:center;
+    pointer-events:none;
+  }
+  .half.a .teamRow{ justify-content:flex-start; padding-left:14px; }
+  .half.b .teamRow{ justify-content:flex-end; padding-right:14px; }
+  .pill{
+    display:flex; align-items:center; gap:7px;
+    background:rgba(10,22,18,0.28);
+    border:1px solid rgba(255,255,255,0.18);
+    border-radius:999px; padding:7px 14px;
+    font-weight:700; letter-spacing:.03em;
+    font-size:clamp(13px, 2vh, 17px);
+  }
+
+  .points{
+    position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    font-family:'Archivo Black', sans-serif;
+    font-size:clamp(120px, min(72vh, 40vw), 760px);
+    line-height:1;
+    letter-spacing:-0.02em;
+    white-space:nowrap;
+  }
+  .points.pulse{ animation:pulse .28s ease; }
+  @keyframes pulse{ 0%{transform:translate(-50%,-50%) scale(1);} 40%{transform:translate(-50%,-50%) scale(1.06);} 100%{transform:translate(-50%,-50%) scale(1);} }
+
+  /* Elapsed match timer, floating dead-center between the two score numbers */
+  #timerBar{
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    z-index:6; pointer-events:none;
+    background:rgba(10,22,18,0.5); border:1px solid rgba(255,255,255,0.15);
+    border-radius:999px; padding:5px 12px;
+    color:var(--net); font-weight:700; letter-spacing:.03em;
+    font-size:clamp(11px, 1.7vh, 15px);
+    white-space:nowrap;
+  }
+
+  /* Current time, top-center in line with the team name pills */
+  #clockBar{
+    position:fixed; top:calc(env(safe-area-inset-top) + 10px); left:50%; transform:translateX(-50%);
+    z-index:6; pointer-events:none;
+    background:rgba(10,22,18,0.28); border:1px solid rgba(255,255,255,0.18);
+    border-radius:999px; padding:7px 14px;
+    color:var(--net); font-weight:700;
+    letter-spacing:.03em; font-size:clamp(13px, 2vh, 17px);
+  }
+
+  /* Mini score table, floating over the net line near the bottom — tennis-broadcast style */
+  #miniTable{
+    position:fixed; left:50%; transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom) + 14px);
+    z-index:6; pointer-events:none;
+    background:rgba(6,12,10,0.88); border:1px solid rgba(255,255,255,0.15);
+    border-radius:10px; padding:7px 12px 9px;
+    color:var(--net);
+    font-weight:600; font-size:clamp(11px, 1.6vh, 15px);
+  }
+  #miniTable .mtHead{
+    display:flex; align-items:center; gap:10px;
+    padding-bottom:4px; margin-bottom:4px;
+    border-bottom:1px solid rgba(255,255,255,0.18);
+  }
+  #miniTable .mtHead .mtLabel{ width:76px; }
+  #miniTable .mtHead span{
+    width:24px; text-align:center;
+    font-size:.72em; letter-spacing:.04em; text-transform:uppercase; opacity:.55;
+  }
+  #miniTable .mtRow{
+    display:flex; align-items:center; gap:10px;
+    padding:2px 0;
+  }
+  #miniTable .mtRow .mtLabel{
+    width:76px; flex-shrink:0; text-align:left;
+    font-size:.82em; font-weight:700; letter-spacing:.01em;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #miniTable .mtRow.team-a .mtLabel{ color:var(--net); }
+  #miniTable .mtRow.team-a .mtLabel::before{ content:'●'; color:var(--teamA); margin-right:5px; font-size:.8em; }
+  #miniTable .mtRow.team-b .mtLabel{ color:var(--net); }
+  #miniTable .mtRow.team-b .mtLabel::before{ content:'●'; color:var(--teamB); margin-right:5px; font-size:.8em; }
+  #miniTable .mtRow span{ width:24px; text-align:center; }
+  #miniTable .mtRow span.tiebreak{ color:#FFD166; }
+  #miniTable .mtRow span.current{ font-weight:700; opacity:1; }
+  #miniTable .mtRow.mtDur{
+    margin-top:3px; padding-top:4px; border-top:1px solid rgba(255,255,255,0.12);
+    font-size:.78em; font-style:italic; font-weight:600; opacity:.55;
+  }
+  #miniTable .mtRow.mtDur span.current{ opacity:.9; }
+  #miniTable .mtRow span:not(.current){ opacity:.6; }
+
+  /* Floating bottom controls (no bar chrome) */
+  .roundBtn{
+    position:fixed; bottom:calc(env(safe-area-inset-bottom) + 14px);
+    width:42px; height:42px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    border:none; cursor:pointer; font-size:17px; flex-shrink:0;
+    z-index:8; box-shadow:0 2px 10px rgba(0,0,0,0.35);
+  }
+  #undoBtn{ left:16px; background:#F2871F; color:#241200; }
+  #settingsBtn{ right:16px; background:rgba(255,255,255,0.14); color:var(--net); }
+
+  /* Overlay */
+  #overlay{
+    position:fixed; inset:0; z-index:50;
+    background:rgba(6,12,10,0.94);
+    display:none; align-items:center; justify-content:center; flex-direction:column;
+    color:var(--net); text-align:center; padding:24px;
+  }
+  #overlay.show{ display:flex; }
+  #overlay .winTitle{
+    font-family:'Archivo Black', sans-serif;
+    font-size:clamp(32px,7vh,64px);
+    margin-bottom:8px;
+  }
+  #overlay .winSub{
+    font-size:clamp(14px,2.4vh,20px); opacity:.7; letter-spacing:.08em; text-transform:uppercase; margin-bottom:28px;
+  }
+  #overlay button{
+    font-family:'Barlow Condensed', sans-serif;
+    font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+    font-size:16px; padding:14px 28px; border-radius:10px;
+    background:var(--net); color:#101816; border:none; cursor:pointer;
+  }
+
+  /* Custom confirm dialog — native confirm() is silently blocked in standalone home-screen apps on iOS */
+  #confirmModal{
+    position:fixed; inset:0; z-index:80;
+    background:rgba(6,12,10,0.94);
+    display:none; align-items:center; justify-content:center;
+    padding: 20px 16px;
+  }
+  #confirmModal.show{ display:flex; }
+  #confirmModal .panel{ margin:0; }
+  #confirmModal p{ margin:0 0 22px; font-size:16px; line-height:1.4; }
+  #confirmModal .panelBtns button{ }
+  #confirmYes{ background:rgba(232,90,54,0.85); color:#1a0800; }
+  #confirmNo{ background:var(--net); color:#101816; }
+
+  /* Settings panel */
+  #settings{
+    position:fixed; inset:0; z-index:60;
+    background:rgba(6,12,10,0.94);
+    display:none;
+    overflow-y:auto;
+    padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+  }
+  #settings.show{ display:flex; justify-content:center; }
+  .panel{
+    background:#101E19; border:1px solid rgba(242,239,230,0.15);
+    border-radius:16px; padding:26px 28px; width:min(90vw, 380px);
+    color:var(--net);
+    margin:auto 0;
+  }
+  .panel h2{
+    font-family:'Barlow Condensed', sans-serif; font-weight:700;
+    letter-spacing:.06em; text-transform:uppercase; font-size:18px; margin:0 0 18px;
+  }
+  .row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 0; border-top:1px solid rgba(242,239,230,0.1);
+    font-size:16px;
+  }
+  .row:first-of-type{ border-top:none; }
+  .toggle{
+    width:48px; height:28px; border-radius:20px; background:rgba(242,239,230,0.2);
+    position:relative; cursor:pointer; flex-shrink:0;
+  }
+  .toggle.on{ background:var(--teamA); }
+  .toggle::after{
+    content:''; position:absolute; top:3px; left:3px; width:22px; height:22px;
+    border-radius:50%; background:var(--net); transition:transform .15s ease;
+  }
+  .toggle.on::after{ transform:translateX(20px); background:#16210C; }
+  .segBtns{ display:flex; gap:6px; }
+  .segBtns button{
+    font-family:'Barlow Condensed', sans-serif; font-weight:600;
+    background:rgba(242,239,230,0.1); color:var(--net); border:1px solid transparent;
+    border-radius:8px; padding:6px 12px; font-size:14px; cursor:pointer;
+  }
+  .segBtns button.active{ background:var(--teamA); color:#16210C; border-color:var(--teamA); }
+  .panelBtns{ display:flex; gap:10px; margin-top:22px; }
+  .panelBtns button{
+    flex:1; padding:12px; border-radius:10px; border:none; cursor:pointer;
+    font-family:'Barlow Condensed', sans-serif; font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:14px;
+  }
+  #closeSettings{ background:var(--net); color:#101816; }
+  #resetMatch{ background:rgba(232,90,54,0.15); color:#FF7A57; }
+
+  /* Player setup modal */
+  #playerSetup{
+    position:fixed; inset:0; z-index:70;
+    background:rgba(6,12,10,0.94);
+    display:none;
+    overflow-y:auto;
+    padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+  }
+  #playerSetup.show{ display:flex; justify-content:center; }
+  #playerSetup .panel{ margin:auto 0; }
+  .setupGroup{ margin-bottom:16px; }
+
+  /* Share block (QR code + link) in settings */
+  .shareBlock{
+    display:flex; flex-direction:column; align-items:center; gap:10px;
+    padding:16px 0; border-top:1px solid rgba(242,239,230,0.1); margin-top:4px;
+  }
+  .shareBlock .setupLabel{ margin-bottom:2px; }
+  .shareBlock img{
+    width:140px; height:140px; border-radius:8px;
+    background:#fff; padding:8px;
+  }
+  #shareUrlText{
+    font-size:11px; opacity:.55; word-break:break-all; text-align:center;
+    max-width:240px;
+  }
+  .shareBlock .ghostBtn{ width:100%; padding:11px; border-radius:8px; font-weight:700;
+    letter-spacing:.04em; text-transform:uppercase; font-size:13px; cursor:pointer; border:none;
+    font-family:'Barlow Condensed', sans-serif;
+  }
+  .setupLabel{
+    font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    font-size:12px; opacity:.6; margin-bottom:8px;
+  }
+  .setupGroup input{
+    width:100%; background:rgba(242,239,230,0.08); border:1px solid rgba(242,239,230,0.18);
+    border-radius:8px; padding:11px 12px; margin-bottom:8px;
+    color:var(--net); font-family:'Barlow Condensed', sans-serif; font-size:16px;
+  }
+  .setupGroup input::placeholder{ color:rgba(242,239,230,0.35); }
+  .ghostBtn{ background:rgba(242,239,230,0.1) !important; color:var(--net) !important; }
+  .serverChoices{ display:flex; flex-direction:column; gap:8px; }
+  .serverChoices button{
+    display:block; width:100%; text-align:left;
+    background:rgba(242,239,230,0.08); border:1px solid rgba(242,239,230,0.15);
+    border-radius:10px; padding:13px 14px; cursor:pointer;
+    color:var(--net); font-family:'Barlow Condensed', sans-serif;
+    font-weight:600; font-size:16px;
+  }
+  .serverChoices button span{
+    display:block; font-size:11px; opacity:.55; letter-spacing:.06em; text-transform:uppercase; margin-bottom:2px;
+  }
+  .serverChoices button:active{ background:rgba(242,239,230,0.18); }
+
+  /* Serving indicator inside team pills */
+  .pName{ opacity:.55; }
+  .pName.serving{ opacity:1; }
+  .pName.serving::before{
+    content:'🎾'; font-size:.8em; vertical-align:middle; margin-right:3px;
+  }
+  .pSep{ opacity:.4; margin:0 2px; }
+  #nameA, #nameB{
+    max-width:calc(50vw - 30px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  /* Always horizontal, even in portrait phone orientation */
+  #app{ flex-direction:row !important; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="half a" id="halfA">
+    <div class="teamRow">
+      <div class="pill"><span id="nameA">TEAM A</span></div>
+    </div>
+    <div class="points" id="ptsA">0</div>
+  </div>
+  <div class="half b" id="halfB">
+    <div class="teamRow">
+      <div class="pill"><span id="nameB">TEAM B</span></div>
+    </div>
+    <div class="points" id="ptsB">0</div>
+  </div>
+</div>
+
+<div id="timerBar">0'</div>
+<div id="clockBar"></div>
+<div id="miniTable">
+  <div class="mtHead" id="mtHead"></div>
+  <div class="mtRow team-a" id="mtRowA"><span class="mtLabel"></span></div>
+  <div class="mtRow team-b" id="mtRowB"><span class="mtLabel"></span></div>
+  <div class="mtRow mtDur" id="mtRowDur"><span class="mtLabel"></span></div>
+</div>
+
+<button class="roundBtn" id="undoBtn" title="Undo">↺</button>
+<button class="roundBtn" id="settingsBtn" title="Settings">⚙</button>
+
+<div id="overlay">
+  <div class="winTitle" id="winTitle">TEAM A WINS</div>
+  <div class="winSub">Match complete</div>
+  <button id="newMatchBtn">New Match</button>
+</div>
+
+<div id="settings">
+  <div class="panel">
+    <h2>Match Settings</h2>
+    <div class="row">
+      <span>Voice announcements</span>
+      <div class="toggle on" id="voiceToggle"></div>
+    </div>
+    <div class="shareBlock">
+      <div class="setupLabel">Share this scoreboard</div>
+      <img id="qrImg" alt="Scan to open this scoreboard" />
+      <div id="shareUrlText"></div>
+      <button id="copyLinkBtn" class="ghostBtn">Copy Link</button>
+    </div>
+    <div class="panelBtns">
+      <button id="openSetupBtn" class="ghostBtn">Set up game</button>
+      <button id="resetMatch">Reset match</button>
+      <button id="closeSettings">Done</button>
+    </div>
+  </div>
+</div>
+
+<div id="confirmModal">
+  <div class="panel">
+    <h2>Reset match?</h2>
+    <p>This resets the score back to the very start. Your players and settings will be kept.</p>
+    <div class="panelBtns">
+      <button id="confirmNo">Cancel</button>
+      <button id="confirmYes">Reset</button>
+    </div>
+  </div>
+</div>
+
+<div id="playerSetup">
+  <div class="panel">
+    <div id="setupStep1">
+      <h2>Set Up Game</h2>
+      <div class="setupGroup">
+        <div class="setupLabel">Team A</div>
+        <input type="text" id="inA1" placeholder="Player 1" maxlength="18">
+        <input type="text" id="inA2" placeholder="Player 2" maxlength="18">
+      </div>
+      <div class="setupGroup">
+        <div class="setupLabel">Team B</div>
+        <input type="text" id="inB1" placeholder="Player 1" maxlength="18">
+        <input type="text" id="inB2" placeholder="Player 2" maxlength="18">
+      </div>
+      <div class="setupGroup">
+        <div class="setupLabel">Best of</div>
+        <div class="segBtns" id="bestOfBtns">
+          <button data-v="1">Best of 1</button>
+          <button data-v="2" class="active">Best of 3</button>
+        </div>
+      </div>
+      <div class="panelBtns">
+        <button id="setupSkip" class="ghostBtn">Skip players</button>
+        <button id="setupNext">Next</button>
+      </div>
+    </div>
+    <div id="setupStep2" style="display:none;">
+      <h2>Who serves first?</h2>
+      <div class="serverChoices" id="serverChoices"></div>
+      <div class="panelBtns">
+        <button id="setupBack" class="ghostBtn">Back</button>
+      </div>
+    </div>
+    <div id="setupStep3" style="display:none;">
+      <h2 id="setupStep3Title">Who serves first for the other team?</h2>
+      <div class="serverChoices" id="serverChoices2"></div>
+      <div class="panelBtns">
+        <button id="setupBack2" class="ghostBtn">Back</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+(function(){
+  const SEQ = [0,15,30,40];
+  // Serve order: Team A Player A, Team B Player B, Team A Player B, Team B Player A — then repeats.
+  // Default 4-slot rotation, used only as an initial seed — actual runtime order lives in state.serveOrder
+  const DEFAULT_SERVE_ORDER = [ {t:'a', p:0}, {t:'b', p:1}, {t:'a', p:1}, {t:'b', p:0} ];
+
+  function freshState(){
+    return {
+      names:{a:'TEAM A', b:'TEAM B'},
+      players:{a:['',''], b:['','']},
+      servingActive:false,
+      serverIndex:0,
+      initialServerIndex:0,
+      serveOrder: DEFAULT_SERVE_ORDER.map(s => ({t:s.t, p:s.p})),
+      voiceOn:true,
+      pts:{a:0, b:0},          // 0/15/30/40/'AD', or numeric during tiebreak
+      games:{a:0, b:0},
+      sets:{a:0, b:0},
+      tiebreak:false,
+      matchOver:false,
+      winner:null,
+      setsToWin:2,
+      setHistory:[],
+      gamesPlayed:0,
+      tbStartServerIndex:0,
+      tbPointsPlayed:0,
+      startTime:Date.now(),
+      setStartTime:Date.now()
+    };
+  }
+
+  const DB_URL = 'https://padel-scoreboard-8f11c-default-rtdb.asia-southeast1.firebasedatabase.app';
+
+  let lastSyncedJSON = null;
+
+  function persist(){
+    const json = JSON.stringify(state);
+    if (json === lastSyncedJSON) return; // nothing changed since our last write/read
+    lastSyncedJSON = json;
+    fetch(DB_URL + '/match.json', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: json
+    }).catch(() => { /* offline — next change will retry */ });
+  }
+
+  const VOICE_PREF_KEY = 'padelVoicePref';
+  function loadVoicePref(){
+    try {
+      const raw = localStorage.getItem(VOICE_PREF_KEY);
+      if (raw) return JSON.parse(raw).voiceOn;
+    } catch(e){ /* ignore */ }
+    return null;
+  }
+  function saveVoicePref(){
+    try { localStorage.setItem(VOICE_PREF_KEY, JSON.stringify({voiceOn: state.voiceOn})); } catch(e){ /* ignore */ }
+  }
+
+  let state = freshState();
+  const savedVoicePref = loadVoicePref();
+  if (typeof savedVoicePref === 'boolean') state.voiceOn = savedVoicePref;
+  let history = [];
+
+  const el = {
+    ptsA: document.getElementById('ptsA'),
+    ptsB: document.getElementById('ptsB'),
+    nameA: document.getElementById('nameA'),
+    nameB: document.getElementById('nameB'),
+    timerBar: document.getElementById('timerBar'),
+    clockBar: document.getElementById('clockBar'),
+    miniTable: document.getElementById('miniTable'),
+    mtHead: document.getElementById('mtHead'),
+    mtRowA: document.getElementById('mtRowA'),
+    mtRowB: document.getElementById('mtRowB'),
+    mtRowDur: document.getElementById('mtRowDur'),
+    overlay: document.getElementById('overlay'),
+    winTitle: document.getElementById('winTitle'),
+    settings: document.getElementById('settings'),
+    bestOfBtns: document.getElementById('bestOfBtns'),
+    playerSetup: document.getElementById('playerSetup'),
+    setupStep1: document.getElementById('setupStep1'),
+    setupStep2: document.getElementById('setupStep2'),
+    setupStep3: document.getElementById('setupStep3'),
+    serverChoices: document.getElementById('serverChoices'),
+    serverChoices2: document.getElementById('serverChoices2'),
+    setupStep3Title: document.getElementById('setupStep3Title'),
+  };
+
+  function clone(s){ return JSON.parse(JSON.stringify(s)); }
+
+  function other(t){ return t === 'a' ? 'b' : 'a'; }
+
+  // ---- Voice announcements ----
+  let selectedVoice = null;
+  function pickVoice(){
+    if (!('speechSynthesis' in window)) return null;
+    const voices = window.speechSynthesis.getVoices();
+    if (!voices.length) return null;
+    // Prefer well-known natural-sounding system voices over compact/robotic defaults.
+    const preferredNames = [
+      'Samantha', 'Ava', 'Allison', 'Susan', 'Nicky', 'Zoe', 'Evan', 'Tom',
+      'Google US English', 'Google UK English Female', 'Microsoft Aria Online (Natural)',
+      'Microsoft Jenny Online (Natural)'
+    ];
+    let v = voices.find(v => preferredNames.includes(v.name));
+    if (!v) v = voices.find(v => /en[-_]US|en[-_]GB/i.test(v.lang) && /premium|enhanced|neural/i.test(v.name));
+    if (!v) v = voices.find(v => /en[-_]US/i.test(v.lang) && !/compact/i.test(v.name));
+    if (!v) v = voices.find(v => v.lang && v.lang.startsWith('en'));
+    return v || voices[0];
+  }
+  if ('speechSynthesis' in window){
+    selectedVoice = pickVoice();
+    window.speechSynthesis.onvoiceschanged = () => { selectedVoice = pickVoice(); };
+  }
+  function speak(text){
+    if (!state.voiceOn) return;
+    try {
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95; u.pitch = 1.0;
+      if (selectedVoice) u.voice = selectedVoice;
+      window.speechSynthesis.speak(u);
+    } catch(e){ /* speech unavailable — fine */ }
+  }
+  function teamLabel(team){ return state.names[team]; }
+  function teamAnnounceName(team){
+    const names = state.players[team];
+    if (state.servingActive && (names[0] || names[1])){
+      return (names[0] || 'Player 1') + ' and ' + (names[1] || 'Player 2');
+    }
+    return teamLabel(team);
+  }
+  function teamBoxLabel(team){
+    const names = state.players[team];
+    if (state.servingActive && (names[0] || names[1])){
+      return (names[0] || 'P1') + '/' + (names[1] || 'P2');
+    }
+    return teamLabel(team);
+  }
+  function serverName(){
+    if (!state.servingActive) return null;
+    const s = state.serveOrder[state.serverIndex];
+    return state.players[s.t][s.p] || ('Player ' + (s.p + 1));
+  }
+  function scoreWord(p){ return p === 0 ? 'love' : String(p); }
+  function spokenScore(){
+    let first = 'a', second = 'b';
+    if (state.servingActive){ first = state.serveOrder[state.serverIndex].t; second = other(first); }
+    if (!state.tiebreak){
+      if (state.pts.a === 'AD') return 'Advantage ' + teamAnnounceName('a');
+      if (state.pts.b === 'AD') return 'Advantage ' + teamAnnounceName('b');
+      if (state.pts.a === 40 && state.pts.b === 40) return 'Deuce';
+    }
+    if (state.pts.a === state.pts.b){
+      const word = state.tiebreak ? String(state.pts.a) : scoreWord(state.pts.a);
+      return word + ' all';
+    }
+    const val = t => state.tiebreak ? String(state.pts[t]) : scoreWord(state.pts[t]);
+    return val(first) + ', ' + val(second);
+  }
+  function pointSignificance(team){
+    const o = other(team);
+    if (state.tiebreak){
+      const wouldWinTB = (state.pts[team] + 1 >= 7) && ((state.pts[team] + 1) - state.pts[o] >= 2);
+      if (!wouldWinTB) return null;
+      return (state.sets[team] + 1 >= state.setsToWin) ? 'Match point' : 'Set point';
+    }
+    const atAdvantage = state.pts[team] === 'AD';
+    const atGamePoint = state.pts[team] === 40 && state.pts[o] !== 40 && state.pts[o] !== 'AD';
+    if (!atAdvantage && !atGamePoint) return null;
+    const newGames = state.games[team] + 1, oppGames = state.games[o];
+    const wouldWinSet = (newGames >= 6 && newGames - oppGames >= 2) || newGames === 7;
+    if (!wouldWinSet) return null;
+    return (state.sets[team] + 1 >= state.setsToWin) ? 'Match point' : 'Set point';
+  }
+  let lastEvent = null; // set by winGame/winSet during a point, read by announcePoint after
+  let changeEndsPending = false; // set when a change of ends is due (every 4 games)
+
+  function announcePoint(team, before){
+    const changeEndsMsg = changeEndsPending ? ' Change ends.' : '';
+    if (state.matchOver && !before.matchOver){
+      speak('Game, set and match to ' + teamAnnounceName(state.winner) + '.');
+      return;
+    }
+    if (lastEvent && lastEvent.type === 'set'){
+      const next = serverName();
+      speak('Game and set to ' + teamAnnounceName(lastEvent.team) + '.' + changeEndsMsg + (next ? ' ' + next + ' to serve.' : ''));
+      return;
+    }
+    if (lastEvent && lastEvent.type === 'game'){
+      const next = serverName();
+      if (state.tiebreak){
+        speak('Game to ' + teamAnnounceName(lastEvent.team) + '. Tiebreak.' + changeEndsMsg + (next ? ' ' + next + ' to serve, one serve.' : ''));
+      } else {
+        speak('Game to ' + teamAnnounceName(lastEvent.team) + '.' + changeEndsMsg + (next ? ' ' + next + ' to serve.' : ''));
+      }
+      return;
+    }
+    const sig = pointSignificance(team);
+    let extra = '';
+    if (state.tiebreak && state.servingActive && before.serverIndex !== state.serverIndex){
+      extra = ' ' + serverName() + ' to serve.';
+    }
+    speak((sig ? sig + '. ' : '') + spokenScore() + extra);
+  }
+
+  function advanceServer(){
+    if (!state.servingActive) return;
+    state.serverIndex = (state.serverIndex + 1) % 4;
+  }
+
+  function checkChangeEnds(){
+    state.gamesPlayed++;
+    if (state.gamesPlayed % 4 === 0) changeEndsPending = true;
+  }
+
+  function winGame(team){
+    checkChangeEnds();
+    advanceServer();
+    lastEvent = {type:'game', team};
+    state.games[team]++;
+    state.pts.a = 0; state.pts.b = 0;
+    state.tiebreak = false;
+
+    const g = state.games, o = other(team);
+    const isDeciderSet = state.setsToWin === 2 && state.sets.a === 1 && state.sets.b === 1;
+    const tbAt = isDeciderSet ? 5 : 6;
+
+    if (g[team] === tbAt && g[o] === tbAt){
+      state.tiebreak = true;
+      state.tbPointsPlayed = 0;
+      state.tbStartServerIndex = state.serverIndex;
+    } else if (g[team] >= tbAt && g[team] - g[o] >= 2){
+      winSet(team);
+    } else if (!isDeciderSet && g[team] === 7){
+      winSet(team);
+    }
+  }
+
+  function winSet(team){
+    lastEvent = {type:'set', team};
+    const mins = Math.max(0, Math.round((Date.now() - state.setStartTime) / 60000));
+    state.setHistory.push({a:state.games.a, b:state.games.b, mins});
+    state.setStartTime = Date.now();
+    state.sets[team]++;
+    state.games.a = 0; state.games.b = 0;
+    state.tiebreak = false;
+    if (state.sets[team] >= state.setsToWin){
+      state.matchOver = true;
+      state.winner = team;
+    }
+  }
+
+  function winTiebreak(team){
+    checkChangeEnds();
+    // treat as a game win for scoring purposes
+    state.games[team]++;
+    state.pts.a = 0; state.pts.b = 0;
+    state.tiebreak = false;
+    if (state.servingActive){
+      // Tiebreak counts as one game in the rotation — resume from where it would have continued.
+      state.serverIndex = (state.tbStartServerIndex + 1) % 4;
+    }
+    state.tbPointsPlayed = 0;
+    winSet(team);
+  }
+
+  function addPoint(team){
+    if (state.matchOver) return;
+    const before = clone(state);
+    history.push(before);
+    if (history.length > 200) history.shift();
+    lastEvent = null;
+    changeEndsPending = false;
+
+    const o = other(team);
+
+    if (state.tiebreak){
+      state.pts[team]++;
+      state.tbPointsPlayed++;
+      if (state.servingActive){
+        // First server plays one point, then serve alternates every two points from there,
+        // continuing the same fixed 4-player rotation.
+        const turn = Math.ceil(state.tbPointsPlayed / 2);
+        state.serverIndex = (state.tbStartServerIndex + turn) % 4;
+      }
+      if (state.pts[team] >= 7 && state.pts[team] - state.pts[o] >= 2){
+        winTiebreak(team);
+      }
+      render(team);
+      announcePoint(team, before);
+      return;
+    }
+
+    const p = state.pts[team], op = state.pts[o];
+
+    if (p === 40){
+      if (op === 40){
+        state.pts[team] = 'AD';
+      } else if (op === 'AD'){
+        state.pts[o] = 40; // back to deuce
+      } else {
+        winGame(team);
+      }
+    } else if (p === 'AD'){
+      winGame(team);
+    } else {
+      const idx = SEQ.indexOf(p);
+      state.pts[team] = SEQ[idx+1];
+    }
+    render(team);
+    announcePoint(team, before);
+  }
+
+  function undo(){
+    if (!history.length) return;
+    state = history.pop();
+    render(null);
+  }
+
+  function resetMatch(){
+    const names = state.names, bestOf = state.setsToWin, players = state.players,
+          servingActive = state.servingActive, initialServerIndex = state.initialServerIndex,
+          voiceOn = state.voiceOn, serveOrder = state.serveOrder;
+    state = freshState();
+    state.names = names; state.setsToWin = bestOf;
+    state.players = players; state.servingActive = servingActive;
+    state.initialServerIndex = initialServerIndex; state.serverIndex = initialServerIndex;
+    state.voiceOn = voiceOn; state.serveOrder = serveOrder;
+    history = [];
+    render(null);
+    updateTimer();
+    announceNewGame();
+  }
+
+  function isFreshMatch(){
+    return state.pts.a === 0 && state.pts.b === 0 && state.games.a === 0 && state.games.b === 0
+      && state.sets.a === 0 && state.sets.b === 0 && state.setHistory.length === 0;
+  }
+
+  function announceNewGame(){
+    const next = serverName();
+    const serveMsg = next ? next + ' to serve, love all.' : 'Love all.';
+    speak('New game started. ' + serveMsg + ' If there are any dubious decisions, Mus has the final say.');
+  }
+
+  function swapSides(){
+    history.push(clone(state));
+    const keys = ['names','players','pts','games','sets'];
+    keys.forEach(k => { const tmp = state[k].a; state[k].a = state[k].b; state[k].b = tmp; });
+    state.setHistory = state.setHistory.map(s => ({a:s.b, b:s.a}));
+    state.serveOrder = state.serveOrder.map(slot => ({t: other(slot.t), p: slot.p}));
+    render(null);
+    speak('Change of ends.');
+  }
+
+  function displayPts(team){
+    if (state.tiebreak) return String(state.pts[team]);
+    return String(state.pts[team]);
+  }
+
+  function ordinal(n){
+    const words = {1:'1st', 2:'2nd', 3:'3rd', 4:'4th', 5:'5th'};
+    return words[n] || (n + 'th');
+  }
+
+  function buildMiniColumns(){
+    const cols = state.setHistory.map((s, i) => ({
+      label: ordinal(i + 1), a: String(s.a), b: String(s.b), current:false, tie:false, mins: (s.mins != null ? s.mins : 0)
+    }));
+    const liveMins = Math.max(0, Math.round((Date.now() - state.setStartTime) / 60000));
+    cols.push({
+      label: ordinal(state.setHistory.length + 1),
+      a: String(state.games.a), b: String(state.games.b),
+      current: true, tie: state.tiebreak, mins: liveMins
+    });
+    return cols;
+  }
+
+  function playerLabelHTML(team){
+    const names = state.players[team];
+    if (!state.servingActive || (!names[0] && !names[1])){
+      return state.names[team];
+    }
+    const server = state.serveOrder[state.serverIndex];
+    const label = (idx) => {
+      const n = names[idx] || ('P' + (idx+1));
+      const serving = server.t === team && server.p === idx;
+      return '<span class="pName' + (serving ? ' serving' : '') + '">' + n + '</span>';
+    };
+    return label(0) + '<span class="pSep">/</span>' + label(1);
+  }
+
+  function render(pulseTeam){
+    el.ptsA.textContent = displayPts('a');
+    el.ptsB.textContent = displayPts('b');
+    el.nameA.innerHTML = playerLabelHTML('a');
+    el.nameB.innerHTML = playerLabelHTML('b');
+
+    const cols = buildMiniColumns();
+    el.mtHead.innerHTML = '<span class="mtLabel"></span>' + cols.map(c => '<span>' + c.label + '</span>').join('');
+    el.mtRowA.innerHTML = '<span class="mtLabel">' + teamBoxLabel('a') + '</span>' + cols.map(c =>
+      '<span class="' + (c.current ? 'current' : '') + (c.tie ? ' tiebreak' : '') + '">' + c.a + '</span>'
+    ).join('');
+    el.mtRowB.innerHTML = '<span class="mtLabel">' + teamBoxLabel('b') + '</span>' + cols.map(c =>
+      '<span class="' + (c.current ? 'current' : '') + (c.tie ? ' tiebreak' : '') + '">' + c.b + '</span>'
+    ).join('');
+    el.mtRowDur.innerHTML = '<span class="mtLabel"></span>' + cols.map(c =>
+      '<span class="' + (c.current ? 'current' : '') + '">' + c.mins + 'm</span>'
+    ).join('');
+
+    if (pulseTeam){
+      const target = pulseTeam === 'a' ? el.ptsA : el.ptsB;
+      target.classList.remove('pulse');
+      void target.offsetWidth;
+      target.classList.add('pulse');
+    }
+
+    if (state.matchOver){
+      el.winTitle.textContent = state.names[state.winner] + ' WINS';
+      el.overlay.classList.add('show');
+    } else {
+      el.overlay.classList.remove('show');
+    }
+
+    [...el.bestOfBtns.children].forEach(b => {
+      b.classList.toggle('active', Number(b.dataset.v) === state.setsToWin);
+    });
+
+    document.getElementById('voiceToggle').classList.toggle('on', state.voiceOn);
+
+    persist();
+  }
+
+  function updateTimer(){
+    const mins = Math.max(0, Math.floor((Date.now() - state.startTime) / 60000));
+    el.timerBar.textContent = mins + "'";
+    el.clockBar.textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+  setInterval(updateTimer, 15000);
+
+  document.getElementById('halfA').addEventListener('click', () => addPoint('a'));
+  document.getElementById('halfB').addEventListener('click', () => addPoint('b'));
+
+  document.getElementById('undoBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); undo();
+  });
+
+  document.getElementById('openSetupBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    el.settings.classList.remove('show');
+    openPlayerSetup();
+  });
+
+  document.getElementById('settingsBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); el.settings.classList.add('show');
+  });
+  document.getElementById('closeSettings').addEventListener('click', (e) => {
+    e.stopPropagation(); el.settings.classList.remove('show');
+  });
+  document.getElementById('resetMatch').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('confirmModal').classList.add('show');
+  });
+  document.getElementById('confirmNo').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('confirmModal').classList.remove('show');
+  });
+  document.getElementById('confirmYes').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('confirmModal').classList.remove('show');
+    resetMatch();
+    el.settings.classList.remove('show');
+  });
+  document.getElementById('newMatchBtn').addEventListener('click', (e) => {
+    e.stopPropagation(); resetMatch();
+  });
+
+  document.getElementById('voiceToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.voiceOn = !state.voiceOn;
+    render(null);
+    saveVoicePref();
+  });
+
+  // Share block: QR code + copy link, based on wherever this page is actually hosted
+  const shareUrl = window.location.href.split('#')[0].split('?')[0];
+  document.getElementById('shareUrlText').textContent = shareUrl;
+  document.getElementById('qrImg').src =
+    'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(shareUrl);
+  document.getElementById('copyLinkBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    const done = () => { const old = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = old; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(shareUrl).then(done).catch(() => {});
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = shareUrl; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+        done();
+      } catch(err){ /* clipboard unavailable — the link is still visible to copy manually */ }
+    }
+  });
+
+  el.bestOfBtns.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    e.stopPropagation();
+    state.setsToWin = Number(btn.dataset.v);
+    render(null);
+  });
+
+  // Player setup modal
+  function openPlayerSetup(){
+    document.getElementById('inA1').value = state.players.a[0];
+    document.getElementById('inA2').value = state.players.a[1];
+    document.getElementById('inB1').value = state.players.b[0];
+    document.getElementById('inB2').value = state.players.b[1];
+    el.setupStep1.style.display = '';
+    el.setupStep2.style.display = 'none';
+    el.setupStep3.style.display = 'none';
+    el.playerSetup.classList.add('show');
+  }
+
+  let setupNames = null;   // {a:[..], b:[..]} captured once step2 is built
+  let setupFirst = null;   // {t, p} chosen in step2
+
+  function setupPlayerName(team, idx){
+    return setupNames[team][idx];
+  }
+
+  function buildServerChoices(){
+    el.serverChoices.innerHTML = '';
+    setupNames = {
+      a: [document.getElementById('inA1').value.trim() || 'Player 1', document.getElementById('inA2').value.trim() || 'Player 2'],
+      b: [document.getElementById('inB1').value.trim() || 'Player 1', document.getElementById('inB2').value.trim() || 'Player 2']
+    };
+    DEFAULT_SERVE_ORDER.forEach((slot) => {
+      const btn = document.createElement('button');
+      const teamLabel = slot.t === 'a' ? state.names.a : state.names.b;
+      btn.innerHTML = '<span>' + teamLabel + '</span>' + setupPlayerName(slot.t, slot.p);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        setupFirst = {t: slot.t, p: slot.p};
+        buildOpposingChoices();
+        el.setupStep2.style.display = 'none';
+        el.setupStep3.style.display = '';
+      });
+      el.serverChoices.appendChild(btn);
+    });
+  }
+
+  function buildOpposingChoices(){
+    el.serverChoices2.innerHTML = '';
+    const oppTeam = other(setupFirst.t);
+    const oppTeamLabel = oppTeam === 'a' ? state.names.a : state.names.b;
+    el.setupStep3Title.textContent = 'Who serves first for ' + oppTeamLabel + '?';
+    [0, 1].forEach((idx) => {
+      const btn = document.createElement('button');
+      btn.innerHTML = '<span>' + oppTeamLabel + '</span>' + setupPlayerName(oppTeam, idx);
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        finishSetup(setupFirst, {t: oppTeam, p: idx});
+      });
+      el.serverChoices2.appendChild(btn);
+    });
+  }
+
+  function finishSetup(first, second){
+    state.players.a = setupNames.a;
+    state.players.b = setupNames.b;
+    // Slot 0/1 = the two chosen first servers; slot 2/3 = each team's other player, continuing the rotation.
+    state.serveOrder = [
+      {t: first.t, p: first.p},
+      {t: second.t, p: second.p},
+      {t: first.t, p: 1 - first.p},
+      {t: second.t, p: 1 - second.p}
+    ];
+    state.serverIndex = 0;
+    state.initialServerIndex = 0;
+    state.servingActive = true;
+    el.playerSetup.classList.remove('show');
+    render(null);
+    speak(serverName() + ' to serve.' + (isFreshMatch() ? ' Love all.' : ''));
+  }
+
+  document.getElementById('setupNext').addEventListener('click', (e) => {
+    e.stopPropagation();
+    buildServerChoices();
+    el.setupStep1.style.display = 'none';
+    el.setupStep2.style.display = '';
+  });
+  document.getElementById('setupBack').addEventListener('click', (e) => {
+    e.stopPropagation();
+    el.setupStep2.style.display = 'none';
+    el.setupStep1.style.display = '';
+  });
+  document.getElementById('setupBack2').addEventListener('click', (e) => {
+    e.stopPropagation();
+    el.setupStep3.style.display = 'none';
+    el.setupStep2.style.display = '';
+  });
+  document.getElementById('setupSkip').addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.servingActive = false;
+    state.players = {a:['',''], b:['','']};
+    el.playerSetup.classList.remove('show');
+    render(null);
+  });
+
+  // Keep the screen awake courtside, if supported.
+  let wakeLock = null;
+  async function requestWakeLock(){
+    try {
+      if ('wakeLock' in navigator){
+        wakeLock = await navigator.wakeLock.request('screen');
+      }
+    } catch (err) { /* not available in this context — fine */ }
+  }
+  document.addEventListener('click', requestWakeLock, { once: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') requestWakeLock();
+  });
+
+  // ---- Live sync across devices (instant push via Firebase, no polling needed) ----
+  let firstSync = true;
+
+  function handleFreshCheck(){
+    if (firstSync){
+      firstSync = false;
+      if (isFreshMatch()) announceNewGame();
+    }
+  }
+
+  function handleMatchUpdate(remote){
+    if (!remote){
+      // Nothing in the shared database yet — this device seeds the first record.
+      persist();
+      handleFreshCheck();
+      return;
+    }
+    const remoteJSON = JSON.stringify(remote);
+    if (remoteJSON === lastSyncedJSON){
+      handleFreshCheck();
+      return;
+    }
+    const voiceOn = state.voiceOn; // personal — keep this device's own setting
+    state = Object.assign(freshState(), remote);
+    state.voiceOn = voiceOn;
+    lastSyncedJSON = remoteJSON;
+    render(null); // repaint only — no voice announcement for changes made on other devices
+    handleFreshCheck();
+  }
+
+  // Firebase's REST API streams live changes over Server-Sent Events — no SDK needed.
+  const matchStream = new EventSource(DB_URL + '/match.json');
+  matchStream.addEventListener('put', (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.path === '/') handleMatchUpdate(msg.data);
+    } catch(err){ /* ignore malformed event */ }
+  });
+  matchStream.addEventListener('patch', () => {
+    // A partial update slipped through — fall back to a plain read to stay correct.
+    fetch(DB_URL + '/match.json').then(r => r.json()).then(handleMatchUpdate).catch(() => {});
+  });
+
+  // Remote command channel — for the Apple Watch (or any physical button) to signal
+  // "team X scored" without running the full scoring app itself. Each command is POSTed
+  // as a new list entry with a unique auto-generated key, so rapid taps never collide.
+  const processedCommandKeys = new Set();
+  function handleCommandEntry(key, cmd){
+    if (!key || processedCommandKeys.has(key)) return;
+    processedCommandKeys.add(key);
+    if (cmd && (cmd.team === 'a' || cmd.team === 'b')) addPoint(cmd.team);
+  }
+  const commandStream = new EventSource(DB_URL + '/commands.json');
+  commandStream.addEventListener('put', (e) => {
+    // Initial snapshot on connect — mark any pre-existing commands as already handled
+    // so reopening the app doesn't replay old taps.
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.path === '/' && msg.data){
+        Object.keys(msg.data).forEach(k => processedCommandKeys.add(k));
+      }
+    } catch(err){ /* ignore malformed event */ }
+  });
+  commandStream.addEventListener('patch', (e) => {
+    // A new command was added after we connected — this is the live case.
+    try {
+      const msg = JSON.parse(e.data);
+      const key = (msg.path || '').replace(/^\//, '');
+      handleCommandEntry(key, msg.data);
+    } catch(err){ /* ignore malformed event */ }
+  });
+
+  render(null); // instant local paint while the stream connects
+  updateTimer();
+})();
+</script>
+</body>
+</html>
