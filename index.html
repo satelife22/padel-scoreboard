@@ -207,6 +207,25 @@
   #confirmEndYes{ background:rgba(232,90,54,0.85); color:#1a0800; }
   #confirmEndNo{ background:var(--net); color:#101816; }
 
+  #historyModal{
+    position:fixed; inset:0; z-index:80;
+    background:rgba(6,12,10,0.94);
+    display:none; align-items:center; justify-content:center;
+    padding: 20px 16px;
+  }
+  #historyModal.show{ display:flex; }
+  .historyPanel{ margin:0; width:min(92vw, 460px); max-height:80vh; display:flex; flex-direction:column; }
+  #historyTableWrap{ overflow-y:auto; margin:14px 0 18px; border-radius:8px; }
+  #historyTable{ width:100%; border-collapse:collapse; font-size:13px; }
+  #historyTable th{
+    text-align:left; padding:8px 8px; font-size:11px; letter-spacing:.04em; text-transform:uppercase;
+    opacity:.55; border-bottom:1px solid rgba(255,255,255,0.12); position:sticky; top:0; background:#101E19;
+  }
+  #historyTable td{
+    padding:9px 8px; border-bottom:1px solid rgba(255,255,255,0.07);
+  }
+  #historyTable tr:last-child td{ border-bottom:none; }
+
   #startPrompt{
     position:fixed; inset:0; z-index:80;
     background:rgba(6,12,10,0.94);
@@ -404,7 +423,7 @@
       <button id="copyLinkBtn" class="ghostBtn">Copy Link</button>
     </div>
     <div class="panelBtns">
-      <button id="openSetupBtn" class="ghostBtn">Set up game</button>
+      <button id="matchHistoryBtn" class="ghostBtn">Match History</button>
       <button id="newGameBtn" class="ghostBtn">Start New Game</button>
     </div>
     <div class="panelBtns">
@@ -431,7 +450,7 @@
 <div id="confirmAllModal">
   <div class="panel">
     <h2>Start a new game?</h2>
-    <p>Start a new game and we'll help you get set up — this clears the score, both teams, player names, and serve order for a completely blank board.</p>
+    <p>Set your player names and prepare to play.</p>
     <div class="panelBtns">
       <button id="confirmAllNo">Cancel</button>
       <button id="confirmAllYes">Start New Game</button>
@@ -446,6 +465,21 @@
     <div class="panelBtns">
       <button id="confirmEndNo">Cancel</button>
       <button id="confirmEndYes">End Game</button>
+    </div>
+  </div>
+</div>
+
+<div id="historyModal">
+  <div class="panel historyPanel">
+    <h2>Match History</h2>
+    <div id="historyTableWrap">
+      <table id="historyTable">
+        <thead><tr><th>Date</th><th>Teams</th><th>Score</th><th>Winner</th><th>Mins</th></tr></thead>
+        <tbody id="historyTbody"></tbody>
+      </table>
+    </div>
+    <div class="panelBtns">
+      <button id="closeHistory">Done</button>
     </div>
   </div>
 </div>
@@ -992,10 +1026,49 @@
     e.stopPropagation(); undo();
   });
 
-  document.getElementById('openSetupBtn').addEventListener('click', (e) => {
+  function loadHistory(){
+    const tbody = document.getElementById('historyTbody');
+    tbody.innerHTML = '';
+    function showEmptyRow(msg){
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 5; td.style.textAlign = 'center'; td.style.opacity = '.6'; td.style.padding = '18px';
+      td.textContent = msg;
+      tr.appendChild(td); tbody.appendChild(tr);
+    }
+    fetch(DB_URL + '/history.json').then(r => r.json()).then(data => {
+      if (!data) { showEmptyRow('No matches recorded yet'); return; }
+      const entries = Object.values(data).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      if (!entries.length) { showEmptyRow('No matches recorded yet'); return; }
+      entries.forEach(entry => {
+        const tr = document.createElement('tr');
+        const dateStr = entry.ts ? new Date(entry.ts).toLocaleDateString([], {month:'short', day:'numeric'}) : '—';
+        const winnerName = entry.winner === 'a' ? entry.teamA : (entry.winner === 'b' ? entry.teamB : 'Tie');
+        const cells = [
+          dateStr,
+          (entry.teamA || 'Team A') + ' vs ' + (entry.teamB || 'Team B'),
+          (entry.setsA || 0) + '-' + (entry.setsB || 0),
+          winnerName,
+          (entry.durationMins != null ? entry.durationMins : 0) + 'm'
+        ];
+        cells.forEach(text => {
+          const td = document.createElement('td');
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }).catch(() => showEmptyRow("Couldn't load history — check your connection"));
+  }
+  document.getElementById('matchHistoryBtn').addEventListener('click', (e) => {
     e.stopPropagation();
     el.settings.classList.remove('show');
-    openPlayerSetup();
+    document.getElementById('historyModal').classList.add('show');
+    loadHistory();
+  });
+  document.getElementById('closeHistory').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('historyModal').classList.remove('show');
   });
 
   document.getElementById('settingsBtn').addEventListener('click', (e) => {
@@ -1169,6 +1242,7 @@
     state.serverIndex = 0;
     state.initialServerIndex = 0;
     state.servingActive = true;
+    state.matchStarted = true;
     markDirty();
     el.playerSetup.classList.remove('show');
     render(null);
@@ -1195,6 +1269,7 @@
     e.stopPropagation();
     state.servingActive = false;
     state.players = {a:['',''], b:['','']};
+    state.matchStarted = true;
     markDirty();
     el.playerSetup.classList.remove('show');
     render(null);
@@ -1267,7 +1342,7 @@
     markDirty();
     render(null);
     updateTimer();
-    showStartPrompt();
+    openPlayerSetup();
   }
   function endGameNow(){
     if (state.matchOver) return; // already finished naturally
