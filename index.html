@@ -237,6 +237,11 @@
   .historyDetailRow td{
     padding:2px 8px 12px; font-size:11.5px; opacity:.7; line-height:1.5; white-space:normal;
   }
+  .historyDeleteBtn{
+    background:none; border:none; color:rgba(232,90,54,0.75); font-size:14px;
+    padding:4px 6px; cursor:pointer; line-height:1;
+  }
+  .historyDeleteBtn:active{ color:#E85A36; }
 
   #startPrompt{
     position:fixed; inset:0; z-index:80;
@@ -500,7 +505,7 @@
     <h2>Match History</h2>
     <div id="historyTableWrap">
       <table id="historyTable">
-        <thead><tr><th>Date</th><th>Teams</th><th>Score</th><th>Winner</th><th>Mins</th></tr></thead>
+        <thead><tr><th>Date</th><th>Teams</th><th>Score</th><th>Winner</th><th>Mins</th><th></th></tr></thead>
         <tbody id="historyTbody"></tbody>
       </table>
     </div>
@@ -1176,13 +1181,14 @@
     function showEmptyRow(msg){
       const tr = document.createElement('tr');
       const td = document.createElement('td');
-      td.colSpan = 5; td.style.textAlign = 'center'; td.style.opacity = '.6'; td.style.padding = '18px';
+      td.colSpan = 6; td.style.textAlign = 'center'; td.style.opacity = '.6'; td.style.padding = '18px';
       td.textContent = msg;
       tr.appendChild(td); tbody.appendChild(tr);
     }
     fetch(DB_URL + '/history.json').then(r => r.json()).then(data => {
       if (!data) { showEmptyRow('No matches recorded yet'); return; }
-      const entries = Object.values(data).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      const entries = Object.entries(data).map(([key, entry]) => Object.assign({_key: key}, entry))
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0));
       if (!entries.length) { showEmptyRow('No matches recorded yet'); return; }
       entries.forEach(entry => {
         const tr = document.createElement('tr');
@@ -1201,6 +1207,19 @@
           td.textContent = text;
           tr.appendChild(td);
         });
+        const delTd = document.createElement('td');
+        const delBtn = document.createElement('button');
+        delBtn.className = 'historyDeleteBtn';
+        delBtn.textContent = '✕';
+        delBtn.setAttribute('aria-label', 'Delete this match');
+        delBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (!confirm('Delete this match from history? This can\'t be undone.')) return;
+          firebaseDelete('/history/' + entry._key + '.json');
+          loadHistory();
+        });
+        delTd.appendChild(delBtn);
+        tr.appendChild(delTd);
         tbody.appendChild(tr);
 
         const setHistory = entry.setHistory || [];
@@ -1208,7 +1227,7 @@
         detailTr.className = 'historyDetailRow';
         detailTr.style.display = 'none';
         const detailTd = document.createElement('td');
-        detailTd.colSpan = 5;
+        detailTd.colSpan = 6;
         if (setHistory.length){
           detailTd.textContent = setHistory.map((s, i) =>
             ordinal(i + 1) + ' set: ' + s.a + '-' + s.b + (s.mins != null ? ' (' + s.mins + 'm)' : '')
@@ -1683,6 +1702,25 @@
   subscribeToMatch();
   render(null); // instant local paint while the stream connects
   updateTimer();
+
+  // If we didn't arrive via an explicit share link (?m=...), try to rejoin whatever
+  // match is currently active instead of silently sitting on a brand new blank one.
+  // This matters a lot for a home-screen bookmark: iOS frequently reloads a backgrounded
+  // page, and without this, every reload would silently start a fresh, disconnected
+  // match — which looks fine in the moment but never gets recorded properly.
+  (async function tryRejoinActiveMatch(){
+    if (getMatchIdFromURL()) return; // came from an explicit link — respect it exactly
+    try {
+      const activeId = await (await fetch(DB_URL + '/activeMatchId.json')).json();
+      if (!activeId || activeId === matchId) return;
+      const activeState = await (await fetch(DB_URL + '/matches/' + activeId + '/state.json')).json();
+      if (activeState && activeState.matchStarted && !activeState.matchOver){
+        matchId = activeId;
+        setMatchIdInURL(matchId);
+        subscribeToMatch(); // reconnect streams to the real active match
+      }
+    } catch(err){ /* offline, or no active match yet — the fresh local match is fine */ }
+  })();
 })();
 </script>
 </body>
