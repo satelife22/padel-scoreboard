@@ -755,7 +755,7 @@
       if (myToken !== voiceToken) return;
       const key = part.toLowerCase();
       if (activeClips()[key]) await playClip(key, myToken);
-      else if (part.trim()) await speakTTS(part, myToken);
+      else if (part.trim() && /[a-z0-9]/i.test(part)) await speakTTS(part, myToken);
     }
   }
   function teamLabel(team){ return state.names[team]; }
@@ -1018,7 +1018,7 @@
 
   function announceNewGame(){
     const next = serverName();
-    const serveMsg = next ? next + ' to serve, love all.' : 'Love all.';
+    const serveMsg = next ? next + ' to serve.' : '';
     speak('New game started. ' + serveMsg + ' If there are any dubious decisions, Mus has the final say.');
   }
 
@@ -1250,6 +1250,7 @@
     e.stopPropagation();
     currentVoiceSet = btn.dataset.v;
     preloadVoiceSet(currentVoiceSet);
+    unlockClipSet(currentVoiceSet);
     updateVoiceSetUI();
     saveVoicePref();
   });
@@ -1364,7 +1365,7 @@
     markDirty();
     el.playerSetup.classList.remove('show');
     render(null);
-    speak(serverName() + ' to serve.' + (isFreshMatch() ? ' Love all.' : ''));
+    speak(serverName() + ' to serve.');
   }
 
   document.getElementById('setupNext').addEventListener('click', (e) => {
@@ -1407,6 +1408,16 @@
   // voice announcements triggered remotely (via the Watch/commands channel) would be
   // silently blocked even though local taps work fine. One tap anywhere unlocks it
   // for the rest of the session.
+  function unlockClipSet(setName){
+    try {
+      Object.keys(VOICE_SETS[setName] || {}).forEach(k => {
+        const a = getClipAudio(setName, k);
+        if (!a) return;
+        a.muted = true;
+        a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
+      });
+    } catch(err){ /* ignore */ }
+  }
   function unlockVoice(){
     try {
       if ('speechSynthesis' in window){
@@ -1415,17 +1426,7 @@
         window.speechSynthesis.speak(u);
       }
     } catch(err){ /* ignore */ }
-    try {
-      Object.keys(VOICE_SETS).forEach(setName => {
-        Object.keys(VOICE_SETS[setName]).forEach(k => {
-          const a = getClipAudio(setName, k);
-          if (!a) return;
-          const prevVol = a.volume;
-          a.volume = 0;
-          a.play().then(() => { a.pause(); a.currentTime = 0; a.volume = prevVol; }).catch(() => { a.volume = prevVol; });
-        });
-      });
-    } catch(err){ /* ignore */ }
+    unlockClipSet(currentVoiceSet);
     const banner = document.getElementById('voiceUnlockBanner');
     if (banner) banner.classList.remove('show');
   }
