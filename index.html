@@ -120,12 +120,13 @@
   #miniTable{
     position:fixed; left:50%; transform:translateX(-50%);
     bottom:calc(env(safe-area-inset-bottom) + 14px);
-    z-index:6; pointer-events:none;
+    z-index:6; cursor:pointer;
     background:rgba(6,12,10,0.88); border:1px solid rgba(255,255,255,0.15);
     border-radius:10px; padding:7px 12px 9px;
     color:var(--net);
     font-weight:600; font-size:clamp(11px, 1.6vh, 15px);
   }
+  #miniTable:active{ background:rgba(6,12,10,0.97); border-color:rgba(255,255,255,0.3); }
   #miniTable .mtHead{
     display:flex; align-items:center; gap:10px;
     padding-bottom:4px; margin-bottom:4px;
@@ -242,6 +243,57 @@
     padding:4px 6px; cursor:pointer; line-height:1;
   }
   .historyDeleteBtn:active{ color:#E85A36; }
+
+  #miniTableModal{
+    position:fixed; inset:0; z-index:80;
+    background:rgba(6,12,10,0.96);
+    display:none; align-items:center; justify-content:center;
+    padding:24px 20px;
+  }
+  #miniTableModal.show{ display:flex; }
+  .miniExpandPanel{
+    width:min(94vw, 520px); max-height:88vh; overflow-y:auto;
+    display:flex; flex-direction:column; align-items:stretch; gap:22px;
+  }
+  #miniExpandContent{ display:flex; flex-direction:column; gap:14px; }
+  .miniExpandHead{
+    display:grid; grid-template-columns:1fr repeat(var(--mx-cols, 1), minmax(46px, 1fr));
+    gap:10px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.18);
+  }
+  .miniExpandHead span{
+    text-align:center; font-size:14px; letter-spacing:.06em; text-transform:uppercase;
+    opacity:.5; font-weight:700;
+  }
+  .miniExpandHead span:first-child{ text-align:left; }
+  .miniExpandRow{
+    display:grid; grid-template-columns:1fr repeat(var(--mx-cols, 1), minmax(46px, 1fr));
+    gap:10px; align-items:center; padding:6px 0;
+  }
+  .miniExpandRow .mxLabel{
+    display:flex; align-items:center; gap:10px;
+    font-size:clamp(18px, 5vw, 26px); font-weight:800; color:var(--net);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .miniExpandRow .mxLabel::before{
+    content:''; width:14px; height:14px; border-radius:50%; flex-shrink:0;
+  }
+  .miniExpandRow.team-a .mxLabel::before{ background:var(--teamA); }
+  .miniExpandRow.team-b .mxLabel::before{ background:var(--teamB); }
+  .miniExpandRow span:not(.mxLabel){
+    text-align:center; font-size:clamp(26px, 8vw, 44px); font-weight:800; color:var(--net);
+    opacity:.55; font-family: 'Archivo Black', sans-serif;
+  }
+  .miniExpandRow span.current{ opacity:1; }
+  .miniExpandRow span.tiebreak{ color:#FFD166; }
+  .miniExpandDur{ border-top:1px solid rgba(255,255,255,0.12); margin-top:4px; padding-top:10px; }
+  .miniExpandDur span{
+    font-size:15px !important; font-style:italic; font-weight:600; opacity:.5 !important; font-family:inherit !important;
+  }
+  .miniExpandDur span.current{ opacity:.85 !important; }
+  #closeMiniExpand{
+    background:var(--net); color:#101816; border:none; border-radius:12px;
+    padding:16px; font-size:18px; font-weight:800; letter-spacing:.02em; cursor:pointer;
+  }
 
   #startPrompt{
     position:fixed; inset:0; z-index:80;
@@ -413,11 +465,18 @@
     </div>
   </div>
 </div>
-<div id="miniTable">
+<div id="miniTable" role="button" aria-label="Tap to enlarge set scores">
   <div class="mtHead" id="mtHead"></div>
   <div class="mtRow team-a" id="mtRowA"><span class="mtLabel"></span></div>
   <div class="mtRow team-b" id="mtRowB"><span class="mtLabel"></span></div>
   <div class="mtRow mtDur" id="mtRowDur"><span class="mtLabel"></span></div>
+</div>
+
+<div id="miniTableModal">
+  <div class="miniExpandPanel" id="miniExpandPanel">
+    <div id="miniExpandContent"></div>
+    <button id="closeMiniExpand">Close</button>
+  </div>
 </div>
 
 <button class="roundBtn" id="undoBtn" title="Undo">↺</button>
@@ -1116,6 +1175,55 @@
     return label(0) + '<span class="pSep">/</span>' + label(1);
   }
 
+  function renderMiniExpand(){
+    const modal = document.getElementById('miniTableModal');
+    if (!modal.classList.contains('show')) return; // don't bother building it while closed
+    const cols = buildMiniColumns();
+    const content = document.getElementById('miniExpandContent');
+    content.style.setProperty('--mx-cols', cols.length);
+    const head = document.createElement('div');
+    head.className = 'miniExpandHead';
+    head.style.setProperty('--mx-cols', cols.length);
+    head.appendChild(document.createElement('span'));
+    cols.forEach(c => { const s = document.createElement('span'); s.textContent = c.label; head.appendChild(s); });
+
+    function buildRow(team, key){
+      const row = document.createElement('div');
+      row.className = 'miniExpandRow team-' + team;
+      row.style.setProperty('--mx-cols', cols.length);
+      const label = document.createElement('span');
+      label.className = 'mxLabel';
+      label.textContent = teamBoxLabel(team);
+      row.appendChild(label);
+      cols.forEach(c => {
+        const s = document.createElement('span');
+        s.textContent = c[key];
+        s.className = (c.current ? 'current' : '') + (c.tie ? ' tiebreak' : '');
+        row.appendChild(s);
+      });
+      return row;
+    }
+    const rowA = buildRow('a', 'a');
+    const rowB = buildRow('b', 'b');
+
+    const durRow = document.createElement('div');
+    durRow.className = 'miniExpandRow miniExpandDur';
+    durRow.style.setProperty('--mx-cols', cols.length);
+    durRow.appendChild(document.createElement('span'));
+    cols.forEach(c => {
+      const s = document.createElement('span');
+      s.textContent = c.mins + 'm';
+      s.className = c.current ? 'current' : '';
+      durRow.appendChild(s);
+    });
+
+    content.innerHTML = '';
+    content.appendChild(head);
+    content.appendChild(rowA);
+    content.appendChild(rowB);
+    content.appendChild(durRow);
+  }
+
   function render(pulseTeam){
     el.ptsA.textContent = displayPts('a');
     el.ptsB.textContent = displayPts('b');
@@ -1137,6 +1245,7 @@
     el.mtRowDur.innerHTML = '<span class="mtLabel"></span>' + cols.map(c =>
       '<span class="' + (c.current ? 'current' : '') + '">' + c.mins + 'm</span>'
     ).join('');
+    renderMiniExpand();
 
     if (pulseTeam){
       const target = pulseTeam === 'a' ? el.ptsA : el.ptsB;
@@ -1255,6 +1364,19 @@
   document.getElementById('closeHistory').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('historyModal').classList.remove('show');
+  });
+
+  document.getElementById('miniTable').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('miniTableModal').classList.add('show');
+    renderMiniExpand();
+  });
+  document.getElementById('closeMiniExpand').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('miniTableModal').classList.remove('show');
+  });
+  document.getElementById('miniTableModal').addEventListener('click', (e) => {
+    if (e.target.id === 'miniTableModal') document.getElementById('miniTableModal').classList.remove('show');
   });
 
   document.getElementById('settingsBtn').addEventListener('click', (e) => {
