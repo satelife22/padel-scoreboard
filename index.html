@@ -50,20 +50,26 @@
   .half.a .teamRow{ justify-content:flex-start; padding-left:14px; }
   .half.b .teamRow{ justify-content:flex-end; padding-right:14px; }
   .pill{
-    display:flex; align-items:center; gap:8px;
+    display:flex; flex-direction:column;
     background:#1B2B24;
     color:var(--net);
     border:1px solid rgba(255,255,255,0.14);
-    border-radius:999px; padding:9px 17px;
-    font-weight:700; letter-spacing:.03em;
-    font-size:clamp(15px, 2.3vh, 19px);
+    border-radius:14px; padding:8px 16px;
     box-shadow:0 3px 10px rgba(0,0,0,0.3);
+    line-height:1.2;
   }
-  .pill::before{
-    content:''; width:8px; height:8px; border-radius:50%; flex-shrink:0;
+  .half.a .pill{ align-items:flex-start; }
+  .half.b .pill{ align-items:flex-end; }
+  .pillTeamName{
+    font-weight:800; letter-spacing:.03em;
+    font-size:clamp(14px, 2.1vh, 18px);
   }
-  .half.a .pill::before{ background:var(--teamA); }
-  .half.b .pill::before{ background:var(--teamB); }
+  .pillPlayers{
+    font-weight:600; letter-spacing:.02em; opacity:.65;
+    font-size:clamp(10px, 1.5vh, 13px);
+    margin-top:1px;
+  }
+  .pillPlayers:empty{ display:none; }
 
   .points{
     position:absolute; top:50%; left:50%;
@@ -351,7 +357,7 @@
     content:'🎾'; font-size:.8em; vertical-align:middle; margin-right:3px;
   }
   .pSep{ opacity:.4; margin:0 2px; }
-  #nameA, #nameB{
+  .pillTeamName, .pillPlayers{
     max-width:calc(50vw - 30px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
 
@@ -364,13 +370,19 @@
 <div id="app">
   <div class="half a" id="halfA">
     <div class="teamRow">
-      <div class="pill"><span id="nameA">TEAM A</span></div>
+      <div class="pill">
+        <span class="pillTeamName" id="nameA">TEAM A</span>
+        <span class="pillPlayers" id="playersA"></span>
+      </div>
     </div>
     <div class="points" id="ptsA">0</div>
   </div>
   <div class="half b" id="halfB">
     <div class="teamRow">
-      <div class="pill"><span id="nameB">TEAM B</span></div>
+      <div class="pill">
+        <span class="pillTeamName" id="nameB">TEAM B</span>
+        <span class="pillPlayers" id="playersB"></span>
+      </div>
     </div>
     <div class="points" id="ptsB">0</div>
   </div>
@@ -610,6 +622,8 @@
     ptsB: document.getElementById('ptsB'),
     nameA: document.getElementById('nameA'),
     nameB: document.getElementById('nameB'),
+    playersA: document.getElementById('playersA'),
+    playersB: document.getElementById('playersB'),
     timerBar: document.getElementById('timerBar'),
     clockBar: document.getElementById('clockBar'),
     miniTable: document.getElementById('miniTable'),
@@ -1056,11 +1070,9 @@
     return cols;
   }
 
-  function playerLabelHTML(team){
+  function playersSubLineHTML(team){
     const names = state.players[team];
-    if (!state.servingActive || (!names[0] && !names[1])){
-      return state.names[team];
-    }
+    if (!state.servingActive || (!names[0] && !names[1])) return '';
     const server = state.serveOrder[state.serverIndex];
     const label = (idx) => {
       const n = names[idx] || ('P' + (idx+1));
@@ -1075,8 +1087,10 @@
     el.ptsB.textContent = displayPts('b');
     el.ptsA.classList.toggle('wide', el.ptsA.textContent === 'AD');
     el.ptsB.classList.toggle('wide', el.ptsB.textContent === 'AD');
-    el.nameA.innerHTML = playerLabelHTML('a');
-    el.nameB.innerHTML = playerLabelHTML('b');
+    el.nameA.textContent = state.names.a;
+    el.nameB.textContent = state.names.b;
+    el.playersA.innerHTML = playersSubLineHTML('a');
+    el.playersB.innerHTML = playersSubLineHTML('b');
 
     const cols = buildMiniColumns();
     el.mtHead.innerHTML = '<span class="mtLabel"></span>' + cols.map(c => '<span>' + c.label + '</span>').join('');
