@@ -662,14 +662,19 @@
     try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch(e){ return []; }
   }
   function savePending(list){ try { localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch(e){ /* ignore */ } }
-  let pendingWrites = loadPending();
+  let pendingWrites = loadPending().filter(w => Date.now() - (w.queuedAt || 0) < 2 * 60 * 60 * 1000);
+  savePending(pendingWrites); // drop anything stale immediately so it can't come back later
   function sendWrite(entry){
     const opts = {method: entry.method, headers: {'Content-Type':'application/json'}};
     if (entry.body !== undefined) opts.body = JSON.stringify(entry.body);
     return fetch(DB_URL + entry.path, opts);
   }
   function firebaseWrite(method, path, body){
-    const entry = {id: genId(), method, path, body};
+    // A newer write to the same location always supersedes an older queued one —
+    // otherwise a stale retry (e.g. a mid-game update that failed to send earlier)
+    // could land AFTER a newer write (like ending the match) and silently overwrite it.
+    pendingWrites = pendingWrites.filter(w => w.path !== path);
+    const entry = {id: genId(), method, path, body, queuedAt: Date.now()};
     pendingWrites.push(entry);
     savePending(pendingWrites);
     sendWrite(entry).then(r => {
