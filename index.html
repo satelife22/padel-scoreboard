@@ -677,7 +677,16 @@
       'advantage': 'voices/izzy/advantage.mp3',
       'all': 'voices/izzy/all.mp3'
     },
-    mus: {}
+    mus: {
+      'love': 'voices/mus/love.mp3',
+      '15': 'voices/mus/15.mp3',
+      '30': 'voices/mus/30.mp3',
+      '40': 'voices/mus/40.mp3',
+      'deuce': 'voices/mus/deuce.mp3',
+      'all': 'voices/mus/all.mp3',
+      'team a': 'voices/mus/team_a.mp3',
+      'team b': 'voices/mus/team_b.mp3'
+    }
   };
   let currentVoiceSet = (savedVoicePref.voiceSet && VOICE_SETS[savedVoicePref.voiceSet]) ? savedVoicePref.voiceSet : 'izzy';
   function activeClips(){ return VOICE_SETS[currentVoiceSet] || {}; }
@@ -740,7 +749,7 @@
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     interruptClip();
     const cleaned = text.replace(/,/g, ' ').replace(/\s+/g, ' ');
-    const parts = cleaned.split(/\b(love|15|30|40|deuce|advantage|all)\b/gi);
+    const parts = cleaned.split(/\b(team a|team b|love|15|30|40|deuce|advantage|all)\b/gi);
     for (const part of parts){
       if (myToken !== voiceToken) return;
       const key = part.toLowerCase();
@@ -750,6 +759,7 @@
   }
   function teamLabel(team){ return state.names[team]; }
   function teamAnnounceName(team){
+    if (currentVoiceSet === 'mus') return team === 'a' ? 'Team A' : 'Team B';
     const names = state.players[team];
     if (state.servingActive && (names[0] || names[1])){
       return (names[0] || 'Player 1') + ' and ' + (names[1] || 'Player 2');
@@ -766,6 +776,7 @@
   function serverName(){
     if (!state.servingActive) return null;
     const s = state.serveOrder[state.serverIndex];
+    if (currentVoiceSet === 'mus') return s.t === 'a' ? 'Team A' : 'Team B';
     return state.players[s.t][s.p] || ('Player ' + (s.p + 1));
   }
   function scoreWord(p){ return p === 0 ? 'love' : String(p); }
