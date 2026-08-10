@@ -712,7 +712,8 @@
     const myToken = voiceToken;
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     interruptClip();
-    const parts = text.split(/\b(love|15|30|40|deuce|advantage)\b/gi);
+    const cleaned = text.replace(/,/g, ' ').replace(/\s+/g, ' ');
+    const parts = cleaned.split(/\b(love|15|30|40|deuce|advantage)\b/gi);
     for (const part of parts){
       if (myToken !== voiceToken) return;
       const key = part.toLowerCase();
