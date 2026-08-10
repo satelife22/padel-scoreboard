@@ -191,19 +191,21 @@
   #overlay .ghostBtn{ background:rgba(242,239,230,0.1) !important; color:var(--net) !important; }
 
   /* Custom confirm dialog — native confirm() is silently blocked in standalone home-screen apps on iOS */
-  #confirmModal, #confirmAllModal{
+  #confirmModal, #confirmAllModal, #confirmEndModal{
     position:fixed; inset:0; z-index:80;
     background:rgba(6,12,10,0.94);
     display:none; align-items:center; justify-content:center;
     padding: 20px 16px;
   }
-  #confirmModal.show, #confirmAllModal.show{ display:flex; }
-  #confirmModal .panel, #confirmAllModal .panel{ margin:0; }
-  #confirmModal p, #confirmAllModal p{ margin:0 0 22px; font-size:16px; line-height:1.4; }
+  #confirmModal.show, #confirmAllModal.show, #confirmEndModal.show{ display:flex; }
+  #confirmModal .panel, #confirmAllModal .panel, #confirmEndModal .panel{ margin:0; }
+  #confirmModal p, #confirmAllModal p, #confirmEndModal p{ margin:0 0 22px; font-size:16px; line-height:1.4; }
   #confirmYes{ background:rgba(232,90,54,0.85); color:#1a0800; }
   #confirmNo{ background:var(--net); color:#101816; }
   #confirmAllYes{ background:rgba(232,90,54,0.85); color:#1a0800; }
   #confirmAllNo{ background:var(--net); color:#101816; }
+  #confirmEndYes{ background:rgba(232,90,54,0.85); color:#1a0800; }
+  #confirmEndNo{ background:var(--net); color:#101816; }
 
   #startPrompt{
     position:fixed; inset:0; z-index:80;
@@ -403,10 +405,13 @@
     </div>
     <div class="panelBtns">
       <button id="openSetupBtn" class="ghostBtn">Set up game</button>
-      <button id="resetMatch">Reset score</button>
+      <button id="newGameBtn" class="ghostBtn">New Game</button>
     </div>
     <div class="panelBtns">
-      <button id="resetAllBtn" class="dangerBtn">Reset All</button>
+      <button id="resetMatch">Restart Match</button>
+      <button id="endGameBtn" class="dangerBtn">End Game</button>
+    </div>
+    <div class="panelBtns">
       <button id="closeSettings">Done</button>
     </div>
   </div>
@@ -414,22 +419,33 @@
 
 <div id="confirmModal">
   <div class="panel">
-    <h2>Reset score?</h2>
+    <h2>Restart match?</h2>
     <p>This resets the score back to the very start. Your players and settings will be kept.</p>
     <div class="panelBtns">
       <button id="confirmNo">Cancel</button>
-      <button id="confirmYes">Reset</button>
+      <button id="confirmYes">Restart</button>
     </div>
   </div>
 </div>
 
 <div id="confirmAllModal">
   <div class="panel">
-    <h2>Reset everything?</h2>
-    <p>This clears the score, both teams, player names, and serve order — back to a completely blank board. This can't be undone.</p>
+    <h2>Start a new game?</h2>
+    <p>This clears the score, both teams, player names, and serve order — back to a completely blank board — and brings up the setup screen again.</p>
     <div class="panelBtns">
       <button id="confirmAllNo">Cancel</button>
-      <button id="confirmAllYes">Reset All</button>
+      <button id="confirmAllYes">New Game</button>
+    </div>
+  </div>
+</div>
+
+<div id="confirmEndModal">
+  <div class="panel">
+    <h2>End this game?</h2>
+    <p>This ends the current match right now, saves it to match history with whoever's currently ahead as the winner, and shows the match-complete screen.</p>
+    <div class="panelBtns">
+      <button id="confirmEndNo">Cancel</button>
+      <button id="confirmEndYes">End Game</button>
     </div>
   </div>
 </div>
@@ -933,7 +949,7 @@
     }
 
     if (state.matchOver && !overlayDismissed){
-      el.winTitle.textContent = state.names[state.winner] + ' WINS';
+      el.winTitle.textContent = state.winner ? (state.names[state.winner] + ' WINS') : 'MATCH ENDED';
       el.overlay.classList.add('show');
     } else {
       el.overlay.classList.remove('show');
@@ -989,7 +1005,7 @@
     el.settings.classList.remove('show');
   });
 
-  document.getElementById('resetAllBtn').addEventListener('click', (e) => {
+  document.getElementById('newGameBtn').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('confirmAllModal').classList.add('show');
   });
@@ -1000,7 +1016,22 @@
   document.getElementById('confirmAllYes').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('confirmAllModal').classList.remove('show');
-    resetAll();
+    startNewGameFlow();
+    el.settings.classList.remove('show');
+  });
+
+  document.getElementById('endGameBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('confirmEndModal').classList.add('show');
+  });
+  document.getElementById('confirmEndNo').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('confirmEndModal').classList.remove('show');
+  });
+  document.getElementById('confirmEndYes').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('confirmEndModal').classList.remove('show');
+    endGameNow();
     el.settings.classList.remove('show');
   });
   document.getElementById('newMatchBtn').addEventListener('click', (e) => {
@@ -1212,13 +1243,33 @@
     state.matchStarted = true;
     markDirty();
   }
-  function resetAll(){
-    beginFreshMatch();
+  function startNewGameFlow(){
+    const voiceOn = state.voiceOn, setsToWin = state.setsToWin;
+    state = freshState();
+    state.voiceOn = voiceOn;
+    state.setsToWin = setsToWin;
     history = [];
     overlayDismissed = false;
+    markDirty();
     render(null);
     updateTimer();
-    speak('Scoreboard fully reset.');
+    showStartPrompt();
+  }
+  function endGameNow(){
+    if (state.matchOver) return; // already finished naturally
+    let winner;
+    if (state.sets.a !== state.sets.b) winner = state.sets.a > state.sets.b ? 'a' : 'b';
+    else if (state.games.a !== state.games.b) winner = state.games.a > state.games.b ? 'a' : 'b';
+    else winner = state.pts.a === state.pts.b ? null : (
+      (typeof state.pts.a === 'number' && typeof state.pts.b === 'number')
+        ? (state.pts.a > state.pts.b ? 'a' : 'b') : null
+    );
+    state.matchOver = true;
+    state.winner = winner;
+    markDirty();
+    recordMatchHistory();
+    render(null);
+    speak(winner ? 'Game, set and match to ' + teamAnnounceName(winner) + '.' : 'Match ended.');
   }
   document.getElementById('quickStartBtn').addEventListener('click', (e) => {
     e.stopPropagation();
