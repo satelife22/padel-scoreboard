@@ -191,18 +191,19 @@
   #overlay .ghostBtn{ background:rgba(242,239,230,0.1) !important; color:var(--net) !important; }
 
   /* Custom confirm dialog — native confirm() is silently blocked in standalone home-screen apps on iOS */
-  #confirmModal{
+  #confirmModal, #confirmAllModal{
     position:fixed; inset:0; z-index:80;
     background:rgba(6,12,10,0.94);
     display:none; align-items:center; justify-content:center;
     padding: 20px 16px;
   }
-  #confirmModal.show{ display:flex; }
-  #confirmModal .panel{ margin:0; }
-  #confirmModal p{ margin:0 0 22px; font-size:16px; line-height:1.4; }
-  #confirmModal .panelBtns button{ }
+  #confirmModal.show, #confirmAllModal.show{ display:flex; }
+  #confirmModal .panel, #confirmAllModal .panel{ margin:0; }
+  #confirmModal p, #confirmAllModal p{ margin:0 0 22px; font-size:16px; line-height:1.4; }
   #confirmYes{ background:rgba(232,90,54,0.85); color:#1a0800; }
   #confirmNo{ background:var(--net); color:#101816; }
+  #confirmAllYes{ background:rgba(232,90,54,0.85); color:#1a0800; }
+  #confirmAllNo{ background:var(--net); color:#101816; }
 
   #startPrompt{
     position:fixed; inset:0; z-index:80;
@@ -265,6 +266,7 @@
   }
   #closeSettings{ background:var(--net); color:#101816; }
   #resetMatch{ background:rgba(232,90,54,0.15); color:#FF7A57; }
+  .dangerBtn{ background:rgba(232,90,54,0.85) !important; color:#1a0800 !important; }
 
   /* Player setup modal */
   #playerSetup{
@@ -401,7 +403,10 @@
     </div>
     <div class="panelBtns">
       <button id="openSetupBtn" class="ghostBtn">Set up game</button>
-      <button id="resetMatch">Reset match</button>
+      <button id="resetMatch">Reset score</button>
+    </div>
+    <div class="panelBtns">
+      <button id="resetAllBtn" class="dangerBtn">Reset All</button>
       <button id="closeSettings">Done</button>
     </div>
   </div>
@@ -409,11 +414,22 @@
 
 <div id="confirmModal">
   <div class="panel">
-    <h2>Reset match?</h2>
+    <h2>Reset score?</h2>
     <p>This resets the score back to the very start. Your players and settings will be kept.</p>
     <div class="panelBtns">
       <button id="confirmNo">Cancel</button>
       <button id="confirmYes">Reset</button>
+    </div>
+  </div>
+</div>
+
+<div id="confirmAllModal">
+  <div class="panel">
+    <h2>Reset everything?</h2>
+    <p>This clears the score, both teams, player names, and serve order — back to a completely blank board. This can't be undone.</p>
+    <div class="panelBtns">
+      <button id="confirmAllNo">Cancel</button>
+      <button id="confirmAllYes">Reset All</button>
     </div>
   </div>
 </div>
@@ -972,6 +988,21 @@
     resetMatch();
     el.settings.classList.remove('show');
   });
+
+  document.getElementById('resetAllBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('confirmAllModal').classList.add('show');
+  });
+  document.getElementById('confirmAllNo').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('confirmAllModal').classList.remove('show');
+  });
+  document.getElementById('confirmAllYes').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('confirmAllModal').classList.remove('show');
+    resetAll();
+    el.settings.classList.remove('show');
+  });
   document.getElementById('newMatchBtn').addEventListener('click', (e) => {
     e.stopPropagation(); resetMatch();
   });
@@ -1180,6 +1211,14 @@
     state.setsToWin = setsToWin;
     state.matchStarted = true;
     markDirty();
+  }
+  function resetAll(){
+    beginFreshMatch();
+    history = [];
+    overlayDismissed = false;
+    render(null);
+    updateTimer();
+    speak('Scoreboard fully reset.');
   }
   document.getElementById('quickStartBtn').addEventListener('click', (e) => {
     e.stopPropagation();
