@@ -416,6 +416,14 @@
       <span>Voice announcements</span>
       <div class="toggle on" id="voiceToggle"></div>
     </div>
+    <div class="setupGroup">
+      <div class="setupLabel">Voice set</div>
+      <div class="segBtns" id="voiceSetBtns">
+        <button data-v="claude">Claude</button>
+        <button data-v="izzy" class="active">Izzy</button>
+        <button data-v="mus">Mus</button>
+      </div>
+    </div>
     <div class="shareBlock">
       <div class="setupLabel">Share this scoreboard</div>
       <img id="qrImg" alt="Scan to open this scoreboard" />
@@ -583,18 +591,18 @@
   function loadVoicePref(){
     try {
       const raw = localStorage.getItem(VOICE_PREF_KEY);
-      if (raw) return JSON.parse(raw).voiceOn;
+      if (raw) return JSON.parse(raw);
     } catch(e){ /* ignore */ }
-    return null;
+    return {};
   }
   function saveVoicePref(){
-    try { localStorage.setItem(VOICE_PREF_KEY, JSON.stringify({voiceOn: state.voiceOn})); } catch(e){ /* ignore */ }
+    try { localStorage.setItem(VOICE_PREF_KEY, JSON.stringify({voiceOn: state.voiceOn, voiceSet: currentVoiceSet})); } catch(e){ /* ignore */ }
   }
 
   let state = freshState();
   let overlayDismissed = false;
   const savedVoicePref = loadVoicePref();
-  if (typeof savedVoicePref === 'boolean') state.voiceOn = savedVoicePref;
+  if (typeof savedVoicePref.voiceOn === 'boolean') state.voiceOn = savedVoicePref.voiceOn;
   let history = [];
 
   const el = {
@@ -653,27 +661,43 @@
     try { speakMixed(text); } catch(e){ /* speech unavailable — fine */ }
   }
 
-  // Recorded human clips for the core, most-repeated score vocabulary.
-  // Anything else in the sentence still uses synthesized speech.
-  const VOICE_CLIPS = {
-    'love': 'voices/love.mp3',
-    '15': 'voices/15.mp3',
-    '30': 'voices/30.mp3',
-    '40': 'voices/40.mp3',
-    'deuce': 'voices/deuce.mp3',
-    'advantage': 'voices/advantage.mp3',
-    'all': 'voices/all.mp3'
+  // Recorded human clips for the core, most-repeated score vocabulary, grouped by voice set.
+  // "claude" has no clips — it's pure synthesized speech. "mus" is a placeholder set,
+  // ready for another round of recordings; it falls back to synthesis until populated.
+  // Anything not covered by the active set's clips still uses synthesized speech.
+  const VOICE_WORDS = ['love', '15', '30', '40', 'deuce', 'advantage', 'all'];
+  const VOICE_SETS = {
+    claude: {},
+    izzy: {
+      'love': 'voices/izzy/love.mp3',
+      '15': 'voices/izzy/15.mp3',
+      '30': 'voices/izzy/30.mp3',
+      '40': 'voices/izzy/40.mp3',
+      'deuce': 'voices/izzy/deuce.mp3',
+      'advantage': 'voices/izzy/advantage.mp3',
+      'all': 'voices/izzy/all.mp3'
+    },
+    mus: {}
   };
+  let currentVoiceSet = (savedVoicePref.voiceSet && VOICE_SETS[savedVoicePref.voiceSet]) ? savedVoicePref.voiceSet : 'izzy';
+  function activeClips(){ return VOICE_SETS[currentVoiceSet] || {}; }
+
   const voiceClipCache = {};
-  function getClipAudio(key){
-    if (!voiceClipCache[key]){
-      const a = new Audio(VOICE_CLIPS[key]);
+  function getClipAudio(setName, key){
+    const cacheKey = setName + ':' + key;
+    if (!voiceClipCache[cacheKey]){
+      const src = (VOICE_SETS[setName] || {})[key];
+      if (!src) return null;
+      const a = new Audio(src);
       a.preload = 'auto';
-      voiceClipCache[key] = a;
+      voiceClipCache[cacheKey] = a;
     }
-    return voiceClipCache[key];
+    return voiceClipCache[cacheKey];
   }
-  Object.keys(VOICE_CLIPS).forEach(k => { try { getClipAudio(k); } catch(e){} });
+  function preloadVoiceSet(setName){
+    Object.keys(VOICE_SETS[setName] || {}).forEach(k => { try { getClipAudio(setName, k); } catch(e){} });
+  }
+  preloadVoiceSet(currentVoiceSet);
 
   let voiceToken = 0;
   let activeClipAudio = null;
@@ -685,7 +709,9 @@
   function playClip(key, token){
     return new Promise(resolve => {
       if (token !== voiceToken) return resolve();
-      const audio = getClipAudio(key).cloneNode(true);
+      const base = getClipAudio(currentVoiceSet, key);
+      if (!base) return resolve();
+      const audio = base.cloneNode(true);
       activeClipAudio = audio;
       activeClipResolve = resolve;
       const done = () => {
@@ -718,7 +744,7 @@
     for (const part of parts){
       if (myToken !== voiceToken) return;
       const key = part.toLowerCase();
-      if (VOICE_CLIPS[key]) await playClip(key, myToken);
+      if (activeClips()[key]) await playClip(key, myToken);
       else if (part.trim()) await speakTTS(part, myToken);
     }
   }
@@ -1200,6 +1226,23 @@
     saveVoicePref();
   });
 
+  const voiceSetBtnsEl = document.getElementById('voiceSetBtns');
+  function updateVoiceSetUI(){
+    [...voiceSetBtnsEl.children].forEach(b => {
+      b.classList.toggle('active', b.dataset.v === currentVoiceSet);
+    });
+  }
+  voiceSetBtnsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-v]');
+    if (!btn) return;
+    e.stopPropagation();
+    currentVoiceSet = btn.dataset.v;
+    preloadVoiceSet(currentVoiceSet);
+    updateVoiceSetUI();
+    saveVoicePref();
+  });
+  updateVoiceSetUI();
+
   // Share block: QR code + copy link, based on wherever this page is actually hosted
   const shareUrl = 'https://satelife22.github.io/padel-scoreboard/';
   document.getElementById('shareUrlText').textContent = shareUrl;
@@ -1361,11 +1404,14 @@
       }
     } catch(err){ /* ignore */ }
     try {
-      Object.keys(VOICE_CLIPS).forEach(k => {
-        const a = getClipAudio(k);
-        const prevVol = a.volume;
-        a.volume = 0;
-        a.play().then(() => { a.pause(); a.currentTime = 0; a.volume = prevVol; }).catch(() => { a.volume = prevVol; });
+      Object.keys(VOICE_SETS).forEach(setName => {
+        Object.keys(VOICE_SETS[setName]).forEach(k => {
+          const a = getClipAudio(setName, k);
+          if (!a) return;
+          const prevVol = a.volume;
+          a.volume = 0;
+          a.play().then(() => { a.pause(); a.currentTime = 0; a.volume = prevVol; }).catch(() => { a.volume = prevVol; });
+        });
       });
     } catch(err){ /* ignore */ }
     const banner = document.getElementById('voiceUnlockBanner');
