@@ -58,8 +58,8 @@
     box-shadow:0 3px 10px rgba(0,0,0,0.3);
     line-height:1.2;
   }
-  .half.a .pill{ align-items:flex-start; }
-  .half.b .pill{ align-items:flex-end; }
+  .half.a .pill{ align-items:center; }
+  .half.b .pill{ align-items:center; }
   .pillTeamName{
     font-weight:800; letter-spacing:.03em;
     font-size:clamp(14px, 2.1vh, 18px);
@@ -353,8 +353,8 @@
   /* Serving indicator inside team pills */
   .pName{ opacity:.55; }
   .pName.serving{ opacity:1; }
-  .pName.serving::before{
-    content:'🎾'; font-size:.8em; vertical-align:middle; margin-right:3px;
+  .pName.serving::after{
+    content:'🎾'; font-size:.8em; vertical-align:middle; margin-left:3px;
   }
   .pSep{ opacity:.4; margin:0 2px; }
   .pillTeamName, .pillPlayers{
