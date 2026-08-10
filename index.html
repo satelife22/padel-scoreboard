@@ -661,7 +661,8 @@
     '30': 'voices/30.mp3',
     '40': 'voices/40.mp3',
     'deuce': 'voices/deuce.mp3',
-    'advantage': 'voices/advantage.mp3'
+    'advantage': 'voices/advantage.mp3',
+    'all': 'voices/all.mp3'
   };
   const voiceClipCache = {};
   function getClipAudio(key){
@@ -713,7 +714,7 @@
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     interruptClip();
     const cleaned = text.replace(/,/g, ' ').replace(/\s+/g, ' ');
-    const parts = cleaned.split(/\b(love|15|30|40|deuce|advantage)\b/gi);
+    const parts = cleaned.split(/\b(love|15|30|40|deuce|advantage|all)\b/gi);
     for (const part of parts){
       if (myToken !== voiceToken) return;
       const key = part.toLowerCase();
