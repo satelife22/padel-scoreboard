@@ -231,6 +231,12 @@
     padding:9px 8px; border-bottom:1px solid rgba(255,255,255,0.07);
   }
   #historyTable tr:last-child td{ border-bottom:none; }
+  .historyRow{ cursor:pointer; }
+  .historyRow:active{ background:rgba(255,255,255,0.06); }
+  .historyRow.expanded td{ color:var(--teamA); }
+  .historyDetailRow td{
+    padding:2px 8px 12px; font-size:11.5px; opacity:.7; line-height:1.5; white-space:normal;
+  }
 
   #startPrompt{
     position:fixed; inset:0; z-index:80;
@@ -1180,6 +1186,7 @@
       if (!entries.length) { showEmptyRow('No matches recorded yet'); return; }
       entries.forEach(entry => {
         const tr = document.createElement('tr');
+        tr.className = 'historyRow';
         const dateStr = entry.ts ? new Date(entry.ts).toLocaleDateString([], {month:'short', day:'numeric'}) : '—';
         const winnerName = entry.winner === 'a' ? entry.teamA : (entry.winner === 'b' ? entry.teamB : 'Tie');
         const cells = [
@@ -1195,6 +1202,28 @@
           tr.appendChild(td);
         });
         tbody.appendChild(tr);
+
+        const setHistory = entry.setHistory || [];
+        const detailTr = document.createElement('tr');
+        detailTr.className = 'historyDetailRow';
+        detailTr.style.display = 'none';
+        const detailTd = document.createElement('td');
+        detailTd.colSpan = 5;
+        if (setHistory.length){
+          detailTd.textContent = setHistory.map((s, i) =>
+            ordinal(i + 1) + ' set: ' + s.a + '-' + s.b + (s.mins != null ? ' (' + s.mins + 'm)' : '')
+          ).join('   ·   ');
+        } else {
+          detailTd.textContent = 'No set-by-set detail for this match.';
+        }
+        detailTr.appendChild(detailTd);
+        tbody.appendChild(detailTr);
+
+        tr.addEventListener('click', () => {
+          const open = detailTr.style.display !== 'none';
+          detailTr.style.display = open ? 'none' : 'table-row';
+          tr.classList.toggle('expanded', !open);
+        });
       });
     }).catch(() => showEmptyRow("Couldn't load history — check your connection"));
   }
