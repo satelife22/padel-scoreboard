@@ -548,42 +548,87 @@
 </div>
 
 
+<script src="padel-engine.js"></script>
 <script>
 (function(){
-  const SEQ = [0,15,30,40];
+  const SEQ = PadelEngine.SEQ;
   // Serve order: Team A Player A, Team B Player B, Team A Player B, Team B Player A — then repeats.
-  // Default 4-slot rotation, used only as an initial seed — actual runtime order lives in state.serveOrder
-  const DEFAULT_SERVE_ORDER = [ {t:'a', p:0}, {t:'b', p:1}, {t:'a', p:1}, {t:'b', p:0} ];
+  const DEFAULT_SERVE_ORDER = PadelEngine.DEFAULT_SERVE_ORDER;
 
   function freshState(){
-    return {
-      names:{a:'TEAM A', b:'TEAM B'},
-      players:{a:['',''], b:['','']},
-      servingActive:false,
-      serverIndex:0,
-      initialServerIndex:0,
-      serveOrder: DEFAULT_SERVE_ORDER.map(s => ({t:s.t, p:s.p})),
-      voiceOn:true,
-      pts:{a:0, b:0},          // 0/15/30/40/'AD', or numeric during tiebreak
-      games:{a:0, b:0},
-      sets:{a:0, b:0},
-      tiebreak:false,
-      matchOver:false,
-      winner:null,
-      setsToWin:2,
-      setHistory:[],
-      gamesPlayed:0,
-      tbStartServerIndex:0,
-      tbPointsPlayed:0,
-      startTime:Date.now(),
-      setStartTime:Date.now(),
-      matchStarted:false
-    };
+    return PadelEngine.createInitialState();
   }
 
   const DB_URL = 'https://padel-scoreboard-8f11c-default-rtdb.asia-southeast1.firebasedatabase.app';
 
+  // ---- Match identity ----
+  // Every match gets its own Firebase location (/matches/{matchId}/...) instead of
+  // one shared /match — a fresh match never collides with an old one, each match's
+  // history record is keyed cleanly by matchId, and stale command backlogs from a
+  // finished match can't leak into the next one.
+  function genId(){
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+  function getMatchIdFromURL(){
+    try { return new URLSearchParams(location.search).get('m'); } catch(e){ return null; }
+  }
+  function setMatchIdInURL(id){
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set('m', id);
+      window.history.replaceState(null, '', url);
+    } catch(e){ /* ignore */ }
+  }
+  let matchId = getMatchIdFromURL() || genId();
+  setMatchIdInURL(matchId);
+
+  // ---- Retry-safe Firebase writes ----
+  // A failed write (offline, dropped connection) is queued and retried — both on an
+  // interval and as soon as the browser reports it's back online — instead of the
+  // scored point silently vanishing.
+  const PENDING_KEY = 'padelPendingWrites';
+  function loadPending(){
+    try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch(e){ return []; }
+  }
+  function savePending(list){ try { localStorage.setItem(PENDING_KEY, JSON.stringify(list)); } catch(e){ /* ignore */ } }
+  let pendingWrites = loadPending();
+  function sendWrite(entry){
+    const opts = {method: entry.method, headers: {'Content-Type':'application/json'}};
+    if (entry.body !== undefined) opts.body = JSON.stringify(entry.body);
+    return fetch(DB_URL + entry.path, opts);
+  }
+  function firebaseWrite(method, path, body){
+    const entry = {id: genId(), method, path, body};
+    pendingWrites.push(entry);
+    savePending(pendingWrites);
+    sendWrite(entry).then(r => {
+      if (r && r.ok){ pendingWrites = pendingWrites.filter(w => w.id !== entry.id); savePending(pendingWrites); }
+    }).catch(() => { /* stays queued — retried below */ });
+  }
+  function firebasePut(path, body){ firebaseWrite('PUT', path, body); }
+  function firebaseDelete(path){ firebaseWrite('DELETE', path); }
+  function retryPendingWrites(){
+    if (!pendingWrites.length) return;
+    pendingWrites.slice().forEach(entry => {
+      sendWrite(entry).then(r => {
+        if (r && r.ok){ pendingWrites = pendingWrites.filter(w => w.id !== entry.id); savePending(pendingWrites); }
+      }).catch(() => { /* still offline — try again next tick */ });
+    });
+  }
+  setInterval(retryPendingWrites, 4000);
+  window.addEventListener('online', retryPendingWrites);
+  retryPendingWrites(); // pick up anything left over from a previous offline session
+
+  // Lightweight scoring audit log — mainly how Watch commands get turned into points
+  // (see the commands stream below); not the source of truth for live state, so a
+  // failure here is non-critical and doesn't need the retry queue's guarantees.
+  function logPointEvent(team){
+    try { firebasePut('/matches/' + matchId + '/points/' + genId() + '.json', {team, ts: Date.now()}); } catch(e){ /* ignore */ }
+  }
+
   let localDirty = false; // set true only by local mutations; cleared once written
+  let lastKnownRev = 0;   // guards against an out-of-date remote snapshot clobbering a newer local one
   function markDirty(){ localDirty = true; }
 
   function persist(){
@@ -591,12 +636,10 @@
     localDirty = false;
     const payload = Object.assign({}, state);
     delete payload.voiceOn; // personal preference — never shared
-    const json = JSON.stringify(payload);
-    fetch(DB_URL + '/match.json', {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
-      body: json
-    }).catch(() => { /* offline — next change will retry */ });
+    payload.rev = Date.now();
+    lastKnownRev = payload.rev; // optimistic — we know we're at least this fresh now
+    firebasePut('/matches/' + matchId + '/state.json', payload);
+    firebasePut('/activeMatchId.json', matchId);
   }
 
   const VOICE_PREF_KEY = 'padelVoicePref';
@@ -645,6 +688,10 @@
   };
 
   function clone(s){ return JSON.parse(JSON.stringify(s)); }
+
+  // Player/team names are free text the user types in — never trust them raw in innerHTML.
+  const ESC_MAP = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC_MAP[c]); }
 
   function other(t){ return t === 'a' ? 'b' : 'a'; }
 
@@ -882,24 +929,6 @@
     const val = t => state.tiebreak ? String(state.pts[t]) : scoreWord(state.pts[t]);
     return val(first) + ', ' + val(second);
   }
-  function pointSignificance(team){
-    const o = other(team);
-    if (state.tiebreak){
-      const wouldWinTB = (state.pts[team] + 1 >= 7) && ((state.pts[team] + 1) - state.pts[o] >= 2);
-      if (!wouldWinTB) return null;
-      return (state.sets[team] + 1 >= state.setsToWin) ? 'Match point' : 'Set point';
-    }
-    const atAdvantage = state.pts[team] === 'AD';
-    const atGamePoint = state.pts[team] === 40 && state.pts[o] !== 40 && state.pts[o] !== 'AD';
-    if (!atAdvantage && !atGamePoint) return null;
-    const newGames = state.games[team] + 1, oppGames = state.games[o];
-    const wouldWinSet = (newGames >= 6 && newGames - oppGames >= 2) || newGames === 7;
-    if (!wouldWinSet) return null;
-    return (state.sets[team] + 1 >= state.setsToWin) ? 'Match point' : 'Set point';
-  }
-  let lastEvent = null; // set by winGame/winSet during a point, read by announcePoint after
-  let changeEndsPending = false; // set when a change of ends is due (every 4 games)
-
   function recordMatchHistory(){
     try {
       const record = {
@@ -912,12 +941,12 @@
         setHistory: state.setHistory,
         durationMins: Math.max(0, Math.round((Date.now() - state.startTime) / 60000))
       };
-      fetch(DB_URL + '/history.json', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(record)
-      }).catch(() => { /* offline — this one match's history entry won't save, not critical */ });
+      firebasePut('/history/' + matchId + '.json', record);
     } catch(err){ /* ignore */ }
+  }
+
+  function deleteMatchHistory(){
+    try { firebaseDelete('/history/' + matchId + '.json'); } catch(err){ /* ignore */ }
   }
 
   function getBanterLine(){
@@ -931,33 +960,33 @@
     return null;
   }
 
-  function announcePoint(team, before){
-    const changeEndsMsg = changeEndsPending ? ' Change ends.' : '';
+  function announcePoint(team, before, info){
+    const changeEndsMsg = info.changeEnds ? ' Change ends.' : '';
     if (state.matchOver && !before.matchOver){
       recordMatchHistory();
       const name = teamAnnounceName(state.winner);
       speak('Game, set and match! Congratulations to ' + name + '!');
       return;
     }
-    if (lastEvent && lastEvent.type === 'set'){
+    if (info.setWon){
       const next = serverName();
-      speak('Game and set to ' + teamAnnounceName(lastEvent.team) + '.' + changeEndsMsg + (next ? ' ' + next + ' to serve.' : ''));
+      speak('Game and set to ' + teamAnnounceName(info.setWon) + '.' + changeEndsMsg + (next ? ' ' + next + ' to serve.' : ''));
       return;
     }
-    if (lastEvent && lastEvent.type === 'game'){
+    if (info.gameWon){
       const next = serverName();
       const banter = getBanterLine();
       const banterMsg = banter ? ' ' + banter : '';
       if (state.tiebreak){
-        speak('Game to ' + teamAnnounceName(lastEvent.team) + '. Tiebreak.' + changeEndsMsg + banterMsg + (next ? ' ' + next + ' to serve, one serve.' : ''));
+        speak('Game to ' + teamAnnounceName(info.gameWon) + '. Tiebreak.' + changeEndsMsg + banterMsg + (next ? ' ' + next + ' to serve, one serve.' : ''));
       } else {
-        speak('Game to ' + teamAnnounceName(lastEvent.team) + '.' + changeEndsMsg + banterMsg + (next ? ' ' + next + ' to serve.' : ''));
+        speak('Game to ' + teamAnnounceName(info.gameWon) + '.' + changeEndsMsg + banterMsg + (next ? ' ' + next + ' to serve.' : ''));
       }
       return;
     }
-    const sig = pointSignificance(team);
+    const sig = PadelEngine.pointSignificance(state, team);
     let extra = '';
-    if (state.tiebreak && state.servingActive && before.serverIndex !== state.serverIndex){
+    if (info.serverChangedMidTiebreak){
       extra = ' ' + serverName() + ' to serve.';
     }
     if (!sig && !extra){
@@ -970,121 +999,35 @@
     speak((sig ? sig + '. ' : '') + spokenScore() + extra);
   }
 
-  function advanceServer(){
-    if (!state.servingActive) return;
-    state.serverIndex = (state.serverIndex + 1) % 4;
-  }
-
-  function checkChangeEnds(){
-    state.gamesPlayed++;
-    if (state.gamesPlayed % 4 === 0) changeEndsPending = true;
-  }
-
-  function winGame(team){
-    checkChangeEnds();
-    advanceServer();
-    lastEvent = {type:'game', team};
-    state.games[team]++;
-    state.pts.a = 0; state.pts.b = 0;
-    state.tiebreak = false;
-
-    const g = state.games, o = other(team);
-    const isDeciderSet = state.setsToWin === 2 && state.sets.a === 1 && state.sets.b === 1;
-    const tbAt = isDeciderSet ? 5 : 6;
-
-    if (g[team] === tbAt && g[o] === tbAt){
-      state.tiebreak = true;
-      state.tbPointsPlayed = 0;
-      state.tbStartServerIndex = state.serverIndex;
-    } else if (g[team] >= tbAt && g[team] - g[o] >= 2){
-      winSet(team);
-    } else if (!isDeciderSet && g[team] === 7){
-      winSet(team);
-    }
-  }
-
-  function winSet(team){
-    lastEvent = {type:'set', team};
-    const mins = Math.max(0, Math.round((Date.now() - state.setStartTime) / 60000));
-    state.setHistory.push({a:state.games.a, b:state.games.b, mins});
-    state.setStartTime = Date.now();
-    state.sets[team]++;
-    state.games.a = 0; state.games.b = 0;
-    state.tiebreak = false;
-    if (state.sets[team] >= state.setsToWin){
-      state.matchOver = true;
-      state.winner = team;
-    }
-  }
-
-  function winTiebreak(team){
-    checkChangeEnds();
-    // treat as a game win for scoring purposes
-    state.games[team]++;
-    state.pts.a = 0; state.pts.b = 0;
-    state.tiebreak = false;
-    if (state.servingActive){
-      // Tiebreak counts as one game in the rotation — resume from where it would have continued.
-      state.serverIndex = (state.tbStartServerIndex + 1) % 4;
-    }
-    state.tbPointsPlayed = 0;
-    winSet(team);
-  }
-
-  function addPoint(team){
+  function addPoint(team, opts){
+    opts = opts || {};
     if (state.matchOver) return;
     markDirty();
     const before = clone(state);
     history.push(before);
     if (history.length > 200) history.shift();
-    lastEvent = null;
-    changeEndsPending = false;
 
-    const o = other(team);
+    const result = PadelEngine.applyPointWithInfo(state, team);
+    state = result.state;
 
-    if (state.tiebreak){
-      state.pts[team]++;
-      state.tbPointsPlayed++;
-      if (state.servingActive){
-        // First server plays one point, then serve alternates every two points from there,
-        // continuing the same fixed 4-player rotation.
-        const turn = Math.ceil(state.tbPointsPlayed / 2);
-        state.serverIndex = (state.tbStartServerIndex + turn) % 4;
-      }
-      if (state.pts[team] >= 7 && state.pts[team] - state.pts[o] >= 2){
-        winTiebreak(team);
-      }
-      render(team);
-      announcePoint(team, before);
-      return;
-    }
-
-    const p = state.pts[team], op = state.pts[o];
-
-    if (p === 40){
-      if (op === 40){
-        state.pts[team] = 'AD';
-      } else if (op === 'AD'){
-        state.pts[o] = 40; // back to deuce
-      } else {
-        winGame(team);
-      }
-    } else if (p === 'AD'){
-      winGame(team);
-    } else {
-      const idx = SEQ.indexOf(p);
-      state.pts[team] = SEQ[idx+1];
-    }
     render(team);
-    announcePoint(team, before);
+    announcePoint(team, before, result.info);
+    if (!opts.skipEventLog) logPointEvent(team);
   }
 
   function undo(){
     if (!history.length) return;
+    const wasMatchOver = state.matchOver;
     state = history.pop();
+    if (wasMatchOver && !state.matchOver){
+      // The winning point was undone — this match is no longer complete.
+      // Remove its history record so it doesn't linger as a false "completed" entry.
+      deleteMatchHistory();
+    }
     markDirty();
     render(null);
   }
+
 
   function resetMatch(){
     const names = state.names, bestOf = state.setsToWin, players = state.players,
@@ -1098,6 +1041,7 @@
     state.matchStarted = true;
     history = [];
     overlayDismissed = false;
+    rotateMatchId();
     markDirty();
     render(null);
     updateTimer();
@@ -1154,7 +1098,7 @@
     if (!state.servingActive || (!names[0] && !names[1])) return '';
     const server = state.serveOrder[state.serverIndex];
     const label = (idx) => {
-      const n = names[idx] || ('P' + (idx+1));
+      const n = esc(names[idx] || ('P' + (idx+1)));
       const serving = server.t === team && server.p === idx;
       return '<span class="pName' + (serving ? ' serving' : '') + '">' + n + '</span>';
     };
@@ -1173,10 +1117,10 @@
 
     const cols = buildMiniColumns();
     el.mtHead.innerHTML = '<span class="mtLabel"></span>' + cols.map(c => '<span>' + c.label + '</span>').join('');
-    el.mtRowA.innerHTML = '<span class="mtLabel">' + teamBoxLabel('a') + '</span>' + cols.map(c =>
+    el.mtRowA.innerHTML = '<span class="mtLabel">' + esc(teamBoxLabel('a')) + '</span>' + cols.map(c =>
       '<span class="' + (c.current ? 'current' : '') + (c.tie ? ' tiebreak' : '') + '">' + c.a + '</span>'
     ).join('');
-    el.mtRowB.innerHTML = '<span class="mtLabel">' + teamBoxLabel('b') + '</span>' + cols.map(c =>
+    el.mtRowB.innerHTML = '<span class="mtLabel">' + esc(teamBoxLabel('b')) + '</span>' + cols.map(c =>
       '<span class="' + (c.current ? 'current' : '') + (c.tie ? ' tiebreak' : '') + '">' + c.b + '</span>'
     ).join('');
     el.mtRowDur.innerHTML = '<span class="mtLabel"></span>' + cols.map(c =>
@@ -1351,10 +1295,15 @@
   updateVoiceSetUI();
 
   // Share block: QR code + copy link, based on wherever this page is actually hosted
-  const shareUrl = 'https://satelife22.github.io/padel-scoreboard/';
-  document.getElementById('shareUrlText').textContent = shareUrl;
-  document.getElementById('qrImg').src =
-    'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(shareUrl);
+  function shareUrlFor(id){ return 'https://satelife22.github.io/padel-scoreboard/?m=' + id; }
+  let shareUrl = shareUrlFor(matchId);
+  function updateShareLink(){
+    shareUrl = shareUrlFor(matchId);
+    document.getElementById('shareUrlText').textContent = shareUrl;
+    document.getElementById('qrImg').src =
+      'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(shareUrl);
+  }
+  updateShareLink();
   document.getElementById('copyLinkBtn').addEventListener('click', (e) => {
     e.stopPropagation();
     const btn = e.currentTarget;
@@ -1414,7 +1363,7 @@
     DEFAULT_SERVE_ORDER.forEach((slot) => {
       const btn = document.createElement('button');
       const teamLabel = slot.t === 'a' ? state.names.a : state.names.b;
-      btn.innerHTML = '<span>' + teamLabel + '</span>' + setupPlayerName(slot.t, slot.p);
+      btn.innerHTML = '<span>' + esc(teamLabel) + '</span>' + esc(setupPlayerName(slot.t, slot.p));
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         setupFirst = {t: slot.t, p: slot.p};
@@ -1433,7 +1382,7 @@
     el.setupStep3Title.textContent = 'Who serves first for ' + oppTeamLabel + '?';
     [0, 1].forEach((idx) => {
       const btn = document.createElement('button');
-      btn.innerHTML = '<span>' + oppTeamLabel + '</span>' + setupPlayerName(oppTeam, idx);
+      btn.innerHTML = '<span>' + esc(oppTeamLabel) + '</span>' + esc(setupPlayerName(oppTeam, idx));
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         finishSetup(setupFirst, {t: oppTeam, p: idx});
@@ -1560,6 +1509,7 @@
     state.voiceOn = voiceOn;
     state.setsToWin = setsToWin;
     state.matchStarted = true;
+    rotateMatchId();
     markDirty();
   }
   function startNewGameFlow(){
@@ -1569,6 +1519,7 @@
     state.setsToWin = setsToWin;
     history = [];
     overlayDismissed = false;
+    rotateMatchId();
     markDirty();
     render(null);
     updateTimer();
@@ -1609,12 +1560,18 @@
 
   function handleMatchUpdate(remote){
     if (!remote){
-      // Nothing in the shared database yet — this device seeds the first record.
+      // Nothing at this match's location yet — this device seeds the first record.
       markDirty();
       persist();
       handleFreshCheck();
       return;
     }
+    if (typeof remote.rev === 'number' && remote.rev < lastKnownRev){
+      // Stale snapshot arriving after we already know something newer (e.g. our own
+      // more recent write, or another device's later update) — don't regress into it.
+      return;
+    }
+    if (typeof remote.rev === 'number') lastKnownRev = remote.rev;
     const voiceOn = state.voiceOn; // personal — keep this device's own setting
     state = Object.assign(freshState(), remote);
     state.voiceOn = voiceOn;
@@ -1622,53 +1579,79 @@
     handleFreshCheck();
   }
 
-  // Firebase's REST API streams live changes over Server-Sent Events — no SDK needed.
-  const matchStream = new EventSource(DB_URL + '/match.json');
-  matchStream.addEventListener('put', (e) => {
-    try {
-      const msg = JSON.parse(e.data);
-      if (msg.path === '/') handleMatchUpdate(msg.data);
-    } catch(err){ /* ignore malformed event */ }
-  });
-  matchStream.addEventListener('patch', () => {
-    // A partial update slipped through — fall back to a plain read to stay correct.
-    fetch(DB_URL + '/match.json').then(r => r.json()).then(handleMatchUpdate).catch(() => {});
-  });
-
   // Remote command channel — for the Apple Watch (or any physical button) to signal
-  // "team X scored" without running the full scoring app itself. Each command is POSTed
-  // as a new list entry with a unique auto-generated key, so rapid taps never collide.
-  const processedCommandKeys = new Set();
+  // "team X scored" without running the full scoring app itself. Each command is
+  // claimed exactly once and then DELETED, so the list can't grow forever and a
+  // command can never be double-processed even across a page reload.
+  let processedCommandKeys = new Set();
   function handleCommandEntry(key, cmd){
     if (!key || processedCommandKeys.has(key)) return;
     processedCommandKeys.add(key);
+    firebaseDelete('/matches/' + matchId + '/commands/' + key + '.json');
     if (cmd && (cmd.team === 'a' || cmd.team === 'b')) addPoint(cmd.team);
   }
-  const commandStream = new EventSource(DB_URL + '/commands.json');
-  commandStream.addEventListener('put', (e) => {
-    try {
-      const msg = JSON.parse(e.data);
-      if (msg.path === '/'){
-        // Initial snapshot on connect — mark any pre-existing commands as already
-        // handled so reopening the app doesn't replay old taps.
-        if (msg.data) Object.keys(msg.data).forEach(k => processedCommandKeys.add(k));
-      } else {
-        // A single new/changed command — this is the live case for a Shortcut's POST.
+
+  // Firebase's REST API streams live changes over Server-Sent Events — no SDK needed.
+  // Wrapped in a function so starting/restarting a match (a new matchId) can tear down
+  // the old connections and reconnect to the new match's location.
+  let matchStream = null, commandStream = null;
+  function subscribeToMatch(){
+    if (matchStream) matchStream.close();
+    if (commandStream) commandStream.close();
+    processedCommandKeys = new Set();
+
+    matchStream = new EventSource(DB_URL + '/matches/' + matchId + '/state.json');
+    matchStream.addEventListener('put', (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.path === '/') handleMatchUpdate(msg.data);
+      } catch(err){ /* ignore malformed event */ }
+    });
+    matchStream.addEventListener('patch', () => {
+      // A partial update slipped through — fall back to a plain read to stay correct.
+      fetch(DB_URL + '/matches/' + matchId + '/state.json').then(r => r.json()).then(handleMatchUpdate).catch(() => {});
+    });
+
+    commandStream = new EventSource(DB_URL + '/matches/' + matchId + '/commands.json');
+    commandStream.addEventListener('put', (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.path === '/'){
+          // Initial snapshot on connect — these are genuinely unprocessed commands
+          // (anything already handled gets deleted), so apply each one in order.
+          if (msg.data){
+            Object.keys(msg.data).forEach(k => handleCommandEntry(k, msg.data[k]));
+          }
+        } else {
+          // A single new/changed command — this is the live case for a Shortcut's POST.
+          const key = (msg.path || '').replace(/^\//, '');
+          handleCommandEntry(key, msg.data);
+        }
+      } catch(err){ /* ignore malformed event */ }
+    });
+    commandStream.addEventListener('patch', (e) => {
+      // Multi-child updates land here — handled defensively, though a single push()
+      // normally arrives via 'put' above.
+      try {
+        const msg = JSON.parse(e.data);
         const key = (msg.path || '').replace(/^\//, '');
         handleCommandEntry(key, msg.data);
-      }
-    } catch(err){ /* ignore malformed event */ }
-  });
-  commandStream.addEventListener('patch', (e) => {
-    // Multi-child updates land here — handled defensively, though a single push()
-    // normally arrives via 'put' above.
-    try {
-      const msg = JSON.parse(e.data);
-      const key = (msg.path || '').replace(/^\//, '');
-      handleCommandEntry(key, msg.data);
-    } catch(err){ /* ignore malformed event */ }
-  });
+      } catch(err){ /* ignore malformed event */ }
+    });
+  }
 
+  // Switch to a brand-new match: fresh Firebase location, fresh URL/QR, fresh streams.
+  // Used whenever a genuinely new contest begins (Start New Game / Restart Match /
+  // Quick Start) so each match's history and command backlog stay properly isolated.
+  function rotateMatchId(){
+    matchId = genId();
+    setMatchIdInURL(matchId);
+    lastKnownRev = 0;
+    updateShareLink();
+    subscribeToMatch();
+  }
+
+  subscribeToMatch();
   render(null); // instant local paint while the stream connects
   updateTimer();
 })();
