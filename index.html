@@ -650,14 +650,75 @@
   }
   function speak(text){
     if (!state.voiceOn) return;
-    try {
-      if (!('speechSynthesis' in window)) return;
-      window.speechSynthesis.cancel();
+    try { speakMixed(text); } catch(e){ /* speech unavailable — fine */ }
+  }
+
+  // Recorded human clips for the core, most-repeated score vocabulary.
+  // Anything else in the sentence still uses synthesized speech.
+  const VOICE_CLIPS = {
+    'love': 'voices/love.mp3',
+    '15': 'voices/15.mp3',
+    '30': 'voices/30.mp3',
+    '40': 'voices/40.mp3',
+    'deuce': 'voices/deuce.mp3',
+    'advantage': 'voices/advantage.mp3'
+  };
+  const voiceClipCache = {};
+  function getClipAudio(key){
+    if (!voiceClipCache[key]){
+      const a = new Audio(VOICE_CLIPS[key]);
+      a.preload = 'auto';
+      voiceClipCache[key] = a;
+    }
+    return voiceClipCache[key];
+  }
+  Object.keys(VOICE_CLIPS).forEach(k => { try { getClipAudio(k); } catch(e){} });
+
+  let voiceToken = 0;
+  let activeClipAudio = null;
+  let activeClipResolve = null;
+  function interruptClip(){
+    if (activeClipAudio){ try{ activeClipAudio.pause(); }catch(e){} activeClipAudio = null; }
+    if (activeClipResolve){ const r = activeClipResolve; activeClipResolve = null; r(); }
+  }
+  function playClip(key, token){
+    return new Promise(resolve => {
+      if (token !== voiceToken) return resolve();
+      const audio = getClipAudio(key).cloneNode(true);
+      activeClipAudio = audio;
+      activeClipResolve = resolve;
+      const done = () => {
+        if (activeClipResolve === resolve) activeClipResolve = null;
+        if (activeClipAudio === audio) activeClipAudio = null;
+        resolve();
+      };
+      audio.addEventListener('ended', done, {once:true});
+      audio.addEventListener('error', done, {once:true});
+      audio.play().catch(done);
+    });
+  }
+  function speakTTS(text, token){
+    return new Promise(resolve => {
+      if (token !== voiceToken || !text.trim() || !('speechSynthesis' in window)) return resolve();
       const u = new SpeechSynthesisUtterance(text);
       u.rate = 0.95; u.pitch = 1.0;
       if (selectedVoice) u.voice = selectedVoice;
+      u.onend = resolve; u.onerror = resolve;
       window.speechSynthesis.speak(u);
-    } catch(e){ /* speech unavailable — fine */ }
+    });
+  }
+  async function speakMixed(text){
+    voiceToken++;
+    const myToken = voiceToken;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    interruptClip();
+    const parts = text.split(/\b(love|15|30|40|deuce|advantage)\b/gi);
+    for (const part of parts){
+      if (myToken !== voiceToken) return;
+      const key = part.toLowerCase();
+      if (VOICE_CLIPS[key]) await playClip(key, myToken);
+      else if (part.trim()) await speakTTS(part, myToken);
+    }
   }
   function teamLabel(team){ return state.names[team]; }
   function teamAnnounceName(team){
@@ -1296,6 +1357,14 @@
         u.volume = 0;
         window.speechSynthesis.speak(u);
       }
+    } catch(err){ /* ignore */ }
+    try {
+      Object.keys(VOICE_CLIPS).forEach(k => {
+        const a = getClipAudio(k);
+        const prevVol = a.volume;
+        a.volume = 0;
+        a.play().then(() => { a.pause(); a.currentTime = 0; a.volume = prevVol; }).catch(() => { a.volume = prevVol; });
+      });
     } catch(err){ /* ignore */ }
     const banner = document.getElementById('voiceUnlockBanner');
     if (banner) banner.classList.remove('show');
