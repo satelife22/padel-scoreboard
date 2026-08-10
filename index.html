@@ -699,11 +699,23 @@
     } catch(err){ /* ignore */ }
   }
 
+  function getBanterLine(){
+    const a = state.games.a, b = state.games.b;
+    if (a === 5 && b === 5) return 'This is a tight one!';
+    const isBlowout = (a === 5 && (b === 0 || b === 1)) || (b === 5 && (a === 0 || a === 1));
+    if (isBlowout){
+      const losingTeam = a === 5 ? 'b' : 'a';
+      return teamAnnounceName(losingTeam) + ", you're getting smashed! Pick up your game.";
+    }
+    return null;
+  }
+
   function announcePoint(team, before){
     const changeEndsMsg = changeEndsPending ? ' Change ends.' : '';
     if (state.matchOver && !before.matchOver){
       recordMatchHistory();
-      speak('Game, set and match to ' + teamAnnounceName(state.winner) + '.');
+      const name = teamAnnounceName(state.winner);
+      speak('Game, set and match! Congratulations to ' + name + '!');
       return;
     }
     if (lastEvent && lastEvent.type === 'set'){
@@ -713,10 +725,12 @@
     }
     if (lastEvent && lastEvent.type === 'game'){
       const next = serverName();
+      const banter = getBanterLine();
+      const banterMsg = banter ? ' ' + banter : '';
       if (state.tiebreak){
-        speak('Game to ' + teamAnnounceName(lastEvent.team) + '. Tiebreak.' + changeEndsMsg + (next ? ' ' + next + ' to serve, one serve.' : ''));
+        speak('Game to ' + teamAnnounceName(lastEvent.team) + '. Tiebreak.' + changeEndsMsg + banterMsg + (next ? ' ' + next + ' to serve, one serve.' : ''));
       } else {
-        speak('Game to ' + teamAnnounceName(lastEvent.team) + '.' + changeEndsMsg + (next ? ' ' + next + ' to serve.' : ''));
+        speak('Game to ' + teamAnnounceName(lastEvent.team) + '.' + changeEndsMsg + banterMsg + (next ? ' ' + next + ' to serve.' : ''));
       }
       return;
     }
