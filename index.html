@@ -703,6 +703,25 @@
       'team b': 'voices/mus/team_b.mp3'
     }
   };
+
+  // Optional whole-phrase recordings ("15-30", "Advantage Team A", etc.) — used in
+  // preference to stitching individual words together, for a more natural score call.
+  // Not covering every combination is fine: whatever's missing just falls back to the
+  // per-word clips above. Tiebreak scores always use synthesis, by request.
+  const COMBO_CLIPS = {
+    mus: {
+      'love-15': 'voices/mus/combo/love_15.mp3',
+      '15-love': 'voices/mus/combo/15_love.mp3',
+      '15-30': 'voices/mus/combo/15_30.mp3',
+      '30-15': 'voices/mus/combo/30_15.mp3',
+      '30-40': 'voices/mus/combo/30_40.mp3',
+      '40-30': 'voices/mus/combo/40_30.mp3',
+      '15-all': 'voices/mus/combo/15_all.mp3',
+      '30-all': 'voices/mus/combo/30_all.mp3',
+      'advantage-team-a': 'voices/mus/combo/advantage_team_a.mp3',
+      'advantage-team-b': 'voices/mus/combo/advantage_team_b.mp3'
+    }
+  };
   let currentVoiceSet = (savedVoicePref.voiceSet && VOICE_SETS[savedVoicePref.voiceSet]) ? savedVoicePref.voiceSet : 'izzy';
   function activeClips(){ return VOICE_SETS[currentVoiceSet] || {}; }
 
@@ -722,6 +741,23 @@
     Object.keys(VOICE_SETS[setName] || {}).forEach(k => { try { getClipAudio(setName, k); } catch(e){} });
   }
   preloadVoiceSet(currentVoiceSet);
+
+  const comboClipCache = {};
+  function getComboAudio(setName, key){
+    const cacheKey = setName + ':' + key;
+    if (!comboClipCache[cacheKey]){
+      const src = (COMBO_CLIPS[setName] || {})[key];
+      if (!src) return null;
+      const a = new Audio(src);
+      a.preload = 'auto';
+      comboClipCache[cacheKey] = a;
+    }
+    return comboClipCache[cacheKey];
+  }
+  function preloadComboSet(setName){
+    Object.keys(COMBO_CLIPS[setName] || {}).forEach(k => { try { getComboAudio(setName, k); } catch(e){} });
+  }
+  preloadComboSet(currentVoiceSet);
 
   let voiceToken = 0;
   let activeClipAudio = null;
@@ -747,6 +783,42 @@
       audio.addEventListener('error', done, {once:true});
       audio.play().catch(done);
     });
+  }
+  function playComboClip(key, token){
+    return new Promise(resolve => {
+      if (token !== voiceToken) return resolve();
+      const base = getComboAudio(currentVoiceSet, key);
+      if (!base) return resolve();
+      const audio = base.cloneNode(true);
+      activeClipAudio = audio;
+      activeClipResolve = resolve;
+      const done = () => {
+        if (activeClipResolve === resolve) activeClipResolve = null;
+        if (activeClipAudio === audio) activeClipAudio = null;
+        resolve();
+      };
+      audio.addEventListener('ended', done, {once:true});
+      audio.addEventListener('error', done, {once:true});
+      audio.play().catch(done);
+    });
+  }
+  async function speakCombo(key){
+    if (!state.voiceOn) return;
+    voiceToken++;
+    const myToken = voiceToken;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    interruptClip();
+    await playComboClip(key, myToken);
+  }
+  function comboKeyForScore(){
+    if (state.tiebreak) return null; // tiebreak always uses synthesis, by request
+    if (state.pts.a === 'AD') return 'advantage-team-a';
+    if (state.pts.b === 'AD') return 'advantage-team-b';
+    if (state.pts.a === 40 && state.pts.b === 40) return null; // Deuce — single-word clip already covers this
+    if (state.pts.a === state.pts.b) return scoreWord(state.pts.a) + '-all';
+    let first = 'a', second = 'b';
+    if (state.servingActive){ first = state.serveOrder[state.serverIndex].t; second = other(first); }
+    return scoreWord(state.pts[first]) + '-' + scoreWord(state.pts[second]);
   }
   function speakTTS(text, token){
     return new Promise(resolve => {
@@ -887,6 +959,13 @@
     let extra = '';
     if (state.tiebreak && state.servingActive && before.serverIndex !== state.serverIndex){
       extra = ' ' + serverName() + ' to serve.';
+    }
+    if (!sig && !extra){
+      const comboKey = comboKeyForScore();
+      if (comboKey && (COMBO_CLIPS[currentVoiceSet] || {})[comboKey]){
+        speakCombo(comboKey);
+        return;
+      }
     }
     speak((sig ? sig + '. ' : '') + spokenScore() + extra);
   }
@@ -1264,6 +1343,7 @@
     e.stopPropagation();
     currentVoiceSet = btn.dataset.v;
     preloadVoiceSet(currentVoiceSet);
+    preloadComboSet(currentVoiceSet);
     unlockClipSet(currentVoiceSet);
     updateVoiceSetUI();
     saveVoicePref();
@@ -1426,6 +1506,12 @@
     try {
       Object.keys(VOICE_SETS[setName] || {}).forEach(k => {
         const a = getClipAudio(setName, k);
+        if (!a) return;
+        a.muted = true;
+        a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
+      });
+      Object.keys(COMBO_CLIPS[setName] || {}).forEach(k => {
+        const a = getComboAudio(setName, k);
         if (!a) return;
         a.muted = true;
         a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
