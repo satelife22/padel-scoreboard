@@ -1657,7 +1657,22 @@
 
   document.addEventListener('click', () => { requestWakeLock(); unlockVoice(); }, { once: true });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') requestWakeLock();
+    if (document.visibilityState === 'visible'){
+      requestWakeLock();
+      // iOS aggressively suspends a backgrounded tab's live connections — coming back
+      // into view is exactly when a Watch command is most likely to have been missed,
+      // so force a clean reconnect and pull the latest state rather than trusting
+      // whatever connection (if any) survived the background period.
+      subscribeToMatch();
+      fetch(DB_URL + '/matches/' + matchId + '/state.json').then(r => r.json()).then(handleMatchUpdate).catch(() => {});
+      retryPendingWrites();
+    }
+  });
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted){ // restored from the back-forward cache — same staleness risk
+      subscribeToMatch();
+      fetch(DB_URL + '/matches/' + matchId + '/state.json').then(r => r.json()).then(handleMatchUpdate).catch(() => {});
+    }
   });
 
   // Show the unlock prompt only if voice is on and this device hasn't been tapped yet.
