@@ -202,27 +202,6 @@
   }
   #overlay .ghostBtn{ background:rgba(242,239,230,0.1) !important; color:var(--net) !important; }
 
-  /* Temporary large game/set score, shown briefly after a game or set is won */
-  #gameScoreOverlay{
-    position:fixed; inset:0; z-index:40;
-    display:none; align-items:center; justify-content:center; flex-direction:column;
-    background:rgba(6,12,10,.94);
-    color:var(--net); text-align:center;
-    pointer-events:none;
-  }
-  #gameScoreOverlay.show{ display:flex; }
-  .gameScoreLabel{
-    font-size:clamp(18px,4vh,32px); font-weight:700; letter-spacing:.16em;
-    text-transform:uppercase; opacity:.6; margin-bottom:18px;
-  }
-  .gameScoreTeams{ display:flex; align-items:center; justify-content:center; gap:clamp(18px,5vw,50px); }
-  .gameScoreTeam{
-    font-family:'Archivo Black', sans-serif;
-    font-size:clamp(80px,24vh,220px); line-height:.9; white-space:nowrap;
-  }
-  .gameScoreDash{ font-family:'Archivo Black', sans-serif; font-size:clamp(48px,12vh,110px); opacity:.45; }
-  .gameScoreSub{ margin-top:22px; font-size:clamp(16px,3.5vh,28px); font-weight:700; letter-spacing:.05em; opacity:.75; }
-
   /* Custom confirm dialog — native confirm() is silently blocked in standalone home-screen apps on iOS */
   #confirmModal, #confirmAllModal, #confirmEndModal{
     position:fixed; inset:0; z-index:80;
@@ -517,16 +496,6 @@
     <button id="newMatchBtn">Yes, Play Again</button>
     <button id="dismissOverlayBtn" class="ghostBtn">Not Now</button>
   </div>
-</div>
-
-<div id="gameScoreOverlay">
-  <div class="gameScoreLabel" id="gameScoreLabel">GAME SCORE</div>
-  <div class="gameScoreTeams">
-    <div class="gameScoreTeam" id="gameScoreLeft"></div>
-    <div class="gameScoreDash">—</div>
-    <div class="gameScoreTeam" id="gameScoreRight"></div>
-  </div>
-  <div class="gameScoreSub" id="gameScoreSub"></div>
 </div>
 
 <div id="settings">
@@ -825,11 +794,6 @@
     setupStep3Title: document.getElementById('setupStep3Title'),
     setupStep4: document.getElementById('setupStep4'),
     courtSideChoices: document.getElementById('courtSideChoices'),
-    gameScoreOverlay: document.getElementById('gameScoreOverlay'),
-    gameScoreLabel: document.getElementById('gameScoreLabel'),
-    gameScoreLeft: document.getElementById('gameScoreLeft'),
-    gameScoreRight: document.getElementById('gameScoreRight'),
-    gameScoreSub: document.getElementById('gameScoreSub'),
   };
 
   function clone(s){ return JSON.parse(JSON.stringify(s)); }
@@ -1155,40 +1119,26 @@
   }
 
   const GAME_SCORE_DISPLAY_MS = 10000;
-  let gameScoreOverlayTimer = null;
+  let miniExpandAutoTimer = null;
 
-  function hideGameScoreOverlay(){
-    if (gameScoreOverlayTimer){
-      clearTimeout(gameScoreOverlayTimer);
-      gameScoreOverlayTimer = null;
+  function closeMiniExpand(){
+    if (miniExpandAutoTimer){
+      clearTimeout(miniExpandAutoTimer);
+      miniExpandAutoTimer = null;
     }
-    if (el.gameScoreOverlay){
-      el.gameScoreOverlay.classList.remove('show');
-    }
+    document.getElementById('miniTableModal').classList.remove('show');
   }
 
-  // scoreA/scoreB are the COMPLETED game score for the point just played — for a
-  // set win, that's the just-finished set's final score (e.g. 6-4), not the reset
-  // 0-0 that the engine has already moved on to for the new set. See addPoint()
-  // for how that score is captured before it's lost.
-  function showGameScoreOverlay(scoreA, scoreB, isSet, setWinnerTeam){
-    hideGameScoreOverlay();
-    const aLeft = state.teamAOnLeft !== false;
-    const leftScore = aLeft ? scoreA : scoreB;
-    const rightScore = aLeft ? scoreB : scoreA;
-    const leftName = aLeft ? state.names.a : state.names.b;
-    const rightName = aLeft ? state.names.b : state.names.a;
-    el.gameScoreLabel.textContent = isSet ? 'SET' : 'GAME SCORE';
-    el.gameScoreLeft.textContent = leftScore;
-    el.gameScoreRight.textContent = rightScore;
-    el.gameScoreSub.textContent = (isSet && setWinnerTeam)
-      ? (state.names[setWinnerTeam] + ' wins the set')
-      : (leftName + '     ' + rightName);
-    el.gameScoreOverlay.classList.add('show');
-    gameScoreOverlayTimer = setTimeout(() => {
-      el.gameScoreOverlay.classList.remove('show');
-      gameScoreOverlayTimer = null;
-    }, GAME_SCORE_DISPLAY_MS);
+  // Opens the same set-by-set table used for manual tap-to-expand. Pass a duration
+  // to auto-close after a completed game/set (e.g. GAME_SCORE_DISPLAY_MS); omit it
+  // for a manual open, which stays open until the person closes it themselves.
+  function openMiniExpand(autoHideMs){
+    closeMiniExpand();
+    document.getElementById('miniTableModal').classList.add('show');
+    renderMiniExpand();
+    if (autoHideMs){
+      miniExpandAutoTimer = setTimeout(closeMiniExpand, autoHideMs);
+    }
   }
 
   function addPoint(team, opts){
@@ -1223,12 +1173,9 @@
 
     if (state.matchOver){
       // The existing match-winner overlay takes priority — never show both.
-      hideGameScoreOverlay();
-    } else if (result.info && result.info.setWon){
-      const finished = state.setHistory[state.setHistory.length - 1];
-      if (finished) showGameScoreOverlay(finished.a, finished.b, true, result.info.setWon);
-    } else if (result.info && result.info.gameWon){
-      showGameScoreOverlay(state.games.a, state.games.b, false);
+      closeMiniExpand();
+    } else if (result.info && (result.info.setWon || result.info.gameWon)){
+      openMiniExpand(GAME_SCORE_DISPLAY_MS);
     }
 
     announcePoint(team, before, result.info);
@@ -1237,7 +1184,7 @@
 
   function undo(){
     if (!history.length) return;
-    hideGameScoreOverlay();
+    closeMiniExpand();
     const wasMatchOver = state.matchOver;
     state = history.pop();
     if (wasMatchOver && !state.matchOver){
@@ -1251,7 +1198,7 @@
 
   function undoRemote(){
     if (!state.previousState) return;
-    hideGameScoreOverlay();
+    closeMiniExpand();
     const wasMatchOver = state.matchOver;
     const voiceOn = state.voiceOn;
     const previous = clone(state.previousState);
@@ -1272,7 +1219,7 @@
 
 
   function resetMatch(){
-    hideGameScoreOverlay();
+    closeMiniExpand();
     const names = state.names, bestOf = state.setsToWin, players = state.players,
           servingActive = state.servingActive, initialServerIndex = state.initialServerIndex,
           voiceOn = state.voiceOn, serveOrder = state.serveOrder;
@@ -1455,7 +1402,7 @@
     if (!state.matchStarted || state.matchOver) return;
     const now = Date.now();
     if (!state.paused){
-      hideGameScoreOverlay();
+      closeMiniExpand();
       state.paused = true;
       state.pausedAt = now;
     } else {
@@ -1579,15 +1526,14 @@
 
   document.getElementById('miniTable').addEventListener('click', (e) => {
     e.stopPropagation();
-    document.getElementById('miniTableModal').classList.add('show');
-    renderMiniExpand();
+    openMiniExpand(); // manual open — stays open until closed, no auto-hide
   });
   document.getElementById('closeMiniExpand').addEventListener('click', (e) => {
     e.stopPropagation();
-    document.getElementById('miniTableModal').classList.remove('show');
+    closeMiniExpand();
   });
   document.getElementById('miniTableModal').addEventListener('click', (e) => {
-    if (e.target.id === 'miniTableModal') document.getElementById('miniTableModal').classList.remove('show');
+    if (e.target.id === 'miniTableModal') closeMiniExpand();
   });
 
   document.getElementById('settingsBtn').addEventListener('click', (e) => {
@@ -1718,7 +1664,7 @@
 
   // Player setup modal
   function openPlayerSetup(){
-    hideGameScoreOverlay();
+    closeMiniExpand();
     document.getElementById('inA1').value = state.players.a[0];
     document.getElementById('inA2').value = state.players.a[1];
     document.getElementById('inB1').value = state.players.b[0];
@@ -1922,7 +1868,7 @@
     document.getElementById('startPrompt').classList.add('show');
   }
   function beginFreshMatch(){
-    hideGameScoreOverlay();
+    closeMiniExpand();
     const voiceOn = state.voiceOn, setsToWin = state.setsToWin;
     state = freshState();
     state.voiceOn = voiceOn;
@@ -1932,7 +1878,7 @@
     markDirty();
   }
   function startNewGameFlow(){
-    hideGameScoreOverlay();
+    closeMiniExpand();
     const voiceOn = state.voiceOn, setsToWin = state.setsToWin;
     state = freshState();
     state.voiceOn = voiceOn;
