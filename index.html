@@ -47,8 +47,8 @@
     display:flex; align-items:center; justify-content:center;
     pointer-events:none;
   }
-  .half.a .teamRow{ justify-content:flex-start; padding-left:14px; }
-  .half.b .teamRow{ justify-content:flex-end; padding-right:14px; }
+  .half.a .teamRow{ justify-content:center; }
+  .half.b .teamRow{ justify-content:center; }
   .pill{
     display:flex; flex-direction:column;
     background:#1B2B24;
@@ -87,13 +87,18 @@
   /* Elapsed match timer, floating dead-center between the two score numbers */
   #timerBar{
     position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-    z-index:6; pointer-events:none;
+    z-index:6; cursor:pointer; pointer-events:auto;
     background:#101E19; border:1px solid rgba(255,255,255,0.15);
     border-radius:999px; padding:7px 15px;
     color:var(--net); font-weight:700; letter-spacing:.03em;
     font-size:clamp(13px, 2vh, 17px);
     white-space:nowrap;
   }
+  #timerBar.paused{ background:#F2871F; color:#241200; }
+  #timerBar:active{ transform:translate(-50%,-50%) scale(.96); }
+
+  body.match-paused #app{ filter:brightness(.55); }
+  body.match-paused #timerBar{ filter:none; }
 
   /* Current time, top-center in line with the team name pills */
   #clockBar{
@@ -412,6 +417,7 @@
     display:block; font-size:11px; opacity:.55; letter-spacing:.06em; text-transform:uppercase; margin-bottom:2px;
   }
   .serverChoices button:active{ background:rgba(242,239,230,0.18); }
+  .setupHint{ margin:0 0 18px; font-size:14px; line-height:1.4; opacity:.65; }
 
   /* Serving indicator inside team pills */
   .pName{ opacity:.55; }
@@ -424,8 +430,9 @@
     max-width:calc(50vw - 30px); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
 
-  /* Always horizontal, even in portrait phone orientation */
-  #app{ flex-direction:row !important; }
+  /* Always horizontal, even in portrait phone orientation. Reversible for court-side flips. */
+  #app{ flex-direction:row; }
+  #app.team-a-right{ flex-direction:row-reverse; }
 </style>
 </head>
 <body>
@@ -614,6 +621,23 @@
         <button id="setupBack2" class="ghostBtn">Back</button>
       </div>
     </div>
+    <div id="setupStep4" style="display:none;">
+      <h2>Which side is Team A?</h2>
+      <p class="setupHint">Looking at this screen from the court, where is Team A starting?</p>
+      <div class="serverChoices" id="courtSideChoices">
+        <button id="teamALeftBtn">
+          <span>Starting court position</span>
+          ← Team A is on the LEFT
+        </button>
+        <button id="teamARightBtn">
+          <span>Starting court position</span>
+          Team A is on the RIGHT →
+        </button>
+      </div>
+      <div class="panelBtns">
+        <button id="setupBack3" class="ghostBtn">Back</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -626,7 +650,14 @@
   const DEFAULT_SERVE_ORDER = PadelEngine.DEFAULT_SERVE_ORDER;
 
   function freshState(){
-    return PadelEngine.createInitialState();
+    const s = PadelEngine.createInitialState();
+    // Physical scoreboard orientation. true = Team A/yellow rendered on the left.
+    s.teamAOnLeft = true;
+    // Pause state.
+    s.paused = false;
+    s.pausedAt = null;
+    s.totalPausedMs = 0;
+    return s;
   }
 
   const DB_URL = 'https://padel-scoreboard-8f11c-default-rtdb.asia-southeast1.firebasedatabase.app';
@@ -736,6 +767,7 @@
   let history = [];
 
   const el = {
+    app: document.getElementById('app'),
     ptsA: document.getElementById('ptsA'),
     ptsB: document.getElementById('ptsB'),
     nameA: document.getElementById('nameA'),
@@ -760,6 +792,8 @@
     serverChoices: document.getElementById('serverChoices'),
     serverChoices2: document.getElementById('serverChoices2'),
     setupStep3Title: document.getElementById('setupStep3Title'),
+    setupStep4: document.getElementById('setupStep4'),
+    courtSideChoices: document.getElementById('courtSideChoices'),
   };
 
   function clone(s){ return JSON.parse(JSON.stringify(s)); }
@@ -1014,7 +1048,7 @@
         setsA: state.sets.a,
         setsB: state.sets.b,
         setHistory: state.setHistory,
-        durationMins: Math.max(0, Math.round((Date.now() - state.startTime) / 60000))
+        durationMins: Math.max(0, Math.round(elapsedMatchMs() / 60000))
       };
       firebasePut('/history/' + matchId + '.json', record);
     } catch(err){ /* ignore */ }
@@ -1087,6 +1121,7 @@
   function addPoint(team, opts){
     opts = opts || {};
     if (state.matchOver) return;
+    if (state.paused) return;
     markDirty();
     const before = clone(state);
 
@@ -1096,6 +1131,15 @@
 
     const result = PadelEngine.applyPointWithInfo(state, team);
     state = result.state;
+
+    // Preserve non-engine shared/UI state — the engine doesn't know about these.
+    state.paused = before.paused;
+    state.pausedAt = before.pausedAt;
+    state.totalPausedMs = before.totalPausedMs || 0;
+
+    // Physical court orientation changes only when the engine signals a change of ends.
+    // Team A/B identity never changes — this only flips which side renders where.
+    state.teamAOnLeft = (result.info && result.info.changeEnds) ? !before.teamAOnLeft : before.teamAOnLeft;
 
     // Store exactly ONE complete pre-point state with the current synced match.
     // Because previousState is part of the same Firebase /state PUT, any connected
@@ -1267,6 +1311,8 @@
   }
 
   function render(pulseTeam){
+    el.app.classList.toggle('team-a-right', state.teamAOnLeft === false);
+    document.body.classList.toggle('match-paused', !!state.paused);
     el.ptsA.textContent = displayPts('a');
     el.ptsB.textContent = displayPts('b');
     el.ptsA.classList.toggle('wide', el.ptsA.textContent === 'AD');
@@ -1312,9 +1358,43 @@
     persist();
   }
 
+  function elapsedMatchMs(){
+    const now = Date.now();
+    const effectiveNow = (state.paused && state.pausedAt) ? state.pausedAt : now;
+    return Math.max(0, effectiveNow - state.startTime - (state.totalPausedMs || 0));
+  }
+
+  function togglePause(){
+    if (!state.matchStarted || state.matchOver) return;
+    const now = Date.now();
+    if (!state.paused){
+      state.paused = true;
+      state.pausedAt = now;
+    } else {
+      if (state.pausedAt){
+        state.totalPausedMs = (state.totalPausedMs || 0) + Math.max(0, now - state.pausedAt);
+      }
+      state.paused = false;
+      state.pausedAt = null;
+    }
+    markDirty();
+    render(null);
+    updateTimer();
+  }
+  el.timerBar.addEventListener('click', (e) => {
+    e.stopPropagation();
+    togglePause();
+  });
+
   function updateTimer(){
-    const mins = Math.max(0, Math.floor((Date.now() - state.startTime) / 60000));
-    el.timerBar.textContent = mins + "'";
+    const mins = Math.floor(elapsedMatchMs() / 60000);
+    if (state.paused){
+      el.timerBar.textContent = '⏸ PAUSED';
+      el.timerBar.classList.add('paused');
+    } else {
+      el.timerBar.textContent = mins + "'";
+      el.timerBar.classList.remove('paused');
+    }
     el.clockBar.textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
   }
   setInterval(updateTimer, 15000);
@@ -1557,11 +1637,13 @@
     el.setupStep1.style.display = '';
     el.setupStep2.style.display = 'none';
     el.setupStep3.style.display = 'none';
+    el.setupStep4.style.display = 'none';
     el.playerSetup.classList.add('show');
   }
 
   let setupNames = null;   // {a:[..], b:[..]} captured once step2 is built
   let setupFirst = null;   // {t, p} chosen in step2
+  let setupSecond = null;  // {t, p} chosen in step3, held until court side is picked in step4
 
   function setupPlayerName(team, idx){
     return setupNames[team][idx];
@@ -1598,13 +1680,15 @@
       btn.innerHTML = '<span>' + esc(oppTeamLabel) + '</span>' + esc(setupPlayerName(oppTeam, idx));
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        finishSetup(setupFirst, {t: oppTeam, p: idx});
+        setupSecond = {t: oppTeam, p: idx};
+        el.setupStep3.style.display = 'none';
+        el.setupStep4.style.display = '';
       });
       el.serverChoices2.appendChild(btn);
     });
   }
 
-  function finishSetup(first, second){
+  function finishSetup(first, second, teamAOnLeft){
     state.players.a = setupNames.a;
     state.players.b = setupNames.b;
     // Slot 0/1 = the two chosen first servers; slot 2/3 = each team's other player, continuing the rotation.
@@ -1617,6 +1701,10 @@
     state.serverIndex = 0;
     state.initialServerIndex = 0;
     state.servingActive = true;
+    state.teamAOnLeft = teamAOnLeft;
+    state.paused = false;
+    state.pausedAt = null;
+    state.totalPausedMs = 0;
     state.matchStarted = true;
     markDirty();
     el.playerSetup.classList.remove('show');
@@ -1639,6 +1727,19 @@
     e.stopPropagation();
     el.setupStep3.style.display = 'none';
     el.setupStep2.style.display = '';
+  });
+  document.getElementById('teamALeftBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    finishSetup(setupFirst, setupSecond, true);
+  });
+  document.getElementById('teamARightBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    finishSetup(setupFirst, setupSecond, false);
+  });
+  document.getElementById('setupBack3').addEventListener('click', (e) => {
+    e.stopPropagation();
+    el.setupStep4.style.display = 'none';
+    el.setupStep3.style.display = '';
   });
   document.getElementById('setupSkip').addEventListener('click', (e) => {
     e.stopPropagation();
