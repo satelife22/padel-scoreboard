@@ -653,10 +653,15 @@
     const s = PadelEngine.createInitialState();
     // Physical scoreboard orientation. true = Team A/yellow rendered on the left.
     s.teamAOnLeft = true;
+    // The orientation teams started the match on, for Restart Match to return to.
+    s.initialTeamAOnLeft = true;
     // Pause state.
     s.paused = false;
     s.pausedAt = null;
     s.totalPausedMs = 0;
+    // Current-set pause tracking, so the mini table's live set duration excludes pauses.
+    s.setPausedMs = 0;
+    s.setPausedAt = null;
     return s;
   }
 
@@ -681,7 +686,8 @@
       window.history.replaceState(null, '', url);
     } catch(e){ /* ignore */ }
   }
-  let matchId = getMatchIdFromURL() || genId();
+  const initialMatchIdFromURL = getMatchIdFromURL();
+  let matchId = initialMatchIdFromURL || genId();
   setMatchIdInURL(matchId);
 
   // ---- Retry-safe Firebase writes ----
@@ -942,29 +948,32 @@
   }
   function playComboClip(key, token){
     return new Promise(resolve => {
-      if (token !== voiceToken) return resolve();
+      if (token !== voiceToken) return resolve(true); // already superseded — no fallback needed
       const base = getComboAudio(currentVoiceSet, key);
-      if (!base) return resolve();
+      if (!base) return resolve(false); // no clip available — let the fallback speak it
       const audio = base.cloneNode(true);
       activeClipAudio = audio;
-      activeClipResolve = resolve;
-      const done = () => {
-        if (activeClipResolve === resolve) activeClipResolve = null;
+      activeClipResolve = () => resolve(true); // interrupted by a newer call, not a real failure
+      const done = (success) => {
         if (activeClipAudio === audio) activeClipAudio = null;
-        resolve();
+        activeClipResolve = null;
+        resolve(success);
       };
-      audio.addEventListener('ended', done, {once:true});
-      audio.addEventListener('error', done, {once:true});
-      audio.play().catch(done);
+      audio.addEventListener('ended', () => done(true), {once:true});
+      audio.addEventListener('error', () => done(false), {once:true});
+      audio.play().catch(() => done(false));
     });
   }
-  async function speakCombo(key){
+  async function speakCombo(key, fallbackText){
     if (!state.voiceOn) return;
     voiceToken++;
     const myToken = voiceToken;
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     interruptClip();
-    await playComboClip(key, myToken);
+    const success = await playComboClip(key, myToken);
+    if (!success && fallbackText && myToken === voiceToken){
+      speakMixed(fallbackText);
+    }
   }
   function comboKeyForScore(){
     if (state.tiebreak) return null; // tiebreak always uses synthesis, by request
@@ -1101,7 +1110,7 @@
     if (!sig && !extra){
       const comboKey = comboKeyForScore();
       if (comboKey && (COMBO_CLIPS[currentVoiceSet] || {})[comboKey]){
-        speakCombo(comboKey);
+        speakCombo(comboKey, spokenScore());
         return;
       }
     }
@@ -1164,6 +1173,13 @@
     // Team A/B identity never changes — this only flips which side renders where.
     state.teamAOnLeft = (result.info && result.info.changeEnds) ? !before.teamAOnLeft : before.teamAOnLeft;
 
+    // A new set starts its own clean pause tally — otherwise pauses from the set
+    // that just ended would incorrectly carry over and skew the new set's duration.
+    if (result.info && result.info.setWon){
+      state.setPausedMs = 0;
+      state.setPausedAt = null;
+    }
+
     // Store exactly ONE complete pre-point state with the current synced match.
     // Because previousState is part of the same Firebase /state PUT, any connected
     // device can reliably undo the most recent point.
@@ -1222,12 +1238,15 @@
     closeMiniExpand();
     const names = state.names, bestOf = state.setsToWin, players = state.players,
           servingActive = state.servingActive, initialServerIndex = state.initialServerIndex,
-          voiceOn = state.voiceOn, serveOrder = state.serveOrder;
+          voiceOn = state.voiceOn, serveOrder = state.serveOrder,
+          initialTeamAOnLeft = state.initialTeamAOnLeft !== false;
     state = freshState();
     state.names = names; state.setsToWin = bestOf;
     state.players = players; state.servingActive = servingActive;
     state.initialServerIndex = initialServerIndex; state.serverIndex = initialServerIndex;
     state.voiceOn = voiceOn; state.serveOrder = serveOrder;
+    state.teamAOnLeft = initialTeamAOnLeft;
+    state.initialTeamAOnLeft = initialTeamAOnLeft;
     state.matchStarted = true;
     history = [];
     overlayDismissed = false;
@@ -1249,17 +1268,6 @@
     speak('New game started. ' + serveMsg + ' If there are any dubious decisions, Mus has the final say.');
   }
 
-  function swapSides(){
-    history.push(clone(state));
-    const keys = ['names','players','pts','games','sets'];
-    keys.forEach(k => { const tmp = state[k].a; state[k].a = state[k].b; state[k].b = tmp; });
-    state.setHistory = state.setHistory.map(s => ({a:s.b, b:s.a}));
-    state.serveOrder = state.serveOrder.map(slot => ({t: other(slot.t), p: slot.p}));
-    markDirty();
-    render(null);
-    speak('Change of ends.');
-  }
-
   function displayPts(team){
     if (state.tiebreak) return String(state.pts[team]);
     return String(state.pts[team]);
@@ -1274,7 +1282,7 @@
     const cols = state.setHistory.map((s, i) => ({
       label: ordinal(i + 1), a: String(s.a), b: String(s.b), current:false, tie:false, mins: (s.mins != null ? s.mins : 0)
     }));
-    const liveMins = Math.max(0, Math.round((Date.now() - state.setStartTime) / 60000));
+    const liveMins = Math.max(0, Math.round(elapsedSetMs() / 60000));
     cols.push({
       label: ordinal(state.setHistory.length + 1),
       a: String(state.games.a), b: String(state.games.b),
@@ -1398,6 +1406,12 @@
     return Math.max(0, effectiveNow - state.startTime - (state.totalPausedMs || 0));
   }
 
+  function elapsedSetMs(){
+    const now = Date.now();
+    const effectiveNow = (state.paused && state.setPausedAt) ? state.setPausedAt : now;
+    return Math.max(0, effectiveNow - state.setStartTime - (state.setPausedMs || 0));
+  }
+
   function togglePause(){
     if (!state.matchStarted || state.matchOver) return;
     const now = Date.now();
@@ -1405,12 +1419,17 @@
       closeMiniExpand();
       state.paused = true;
       state.pausedAt = now;
+      state.setPausedAt = now;
     } else {
       if (state.pausedAt){
         state.totalPausedMs = (state.totalPausedMs || 0) + Math.max(0, now - state.pausedAt);
       }
+      if (state.setPausedAt){
+        state.setPausedMs = (state.setPausedMs || 0) + Math.max(0, now - state.setPausedAt);
+      }
       state.paused = false;
       state.pausedAt = null;
+      state.setPausedAt = null;
     }
     markDirty();
     render(null);
@@ -1737,9 +1756,13 @@
     state.initialServerIndex = 0;
     state.servingActive = true;
     state.teamAOnLeft = teamAOnLeft;
+    state.initialTeamAOnLeft = teamAOnLeft;
     state.paused = false;
     state.pausedAt = null;
     state.totalPausedMs = 0;
+    const now = Date.now();
+    state.startTime = now;
+    state.setStartTime = now;
     state.matchStarted = true;
     markDirty();
     el.playerSetup.classList.remove('show');
@@ -1780,6 +1803,9 @@
     e.stopPropagation();
     state.servingActive = false;
     state.players = {a:['',''], b:['','']};
+    const now = Date.now();
+    state.startTime = now;
+    state.setStartTime = now;
     state.matchStarted = true;
     markDirty();
     el.playerSetup.classList.remove('show');
@@ -1873,6 +1899,9 @@
     state = freshState();
     state.voiceOn = voiceOn;
     state.setsToWin = setsToWin;
+    const now = Date.now();
+    state.startTime = now;
+    state.setStartTime = now;
     state.matchStarted = true;
     rotateMatchId();
     markDirty();
@@ -2031,7 +2060,7 @@
   // page, and without this, every reload would silently start a fresh, disconnected
   // match — which looks fine in the moment but never gets recorded properly.
   (async function tryRejoinActiveMatch(){
-    if (getMatchIdFromURL()) return; // came from an explicit link — respect it exactly
+    if (initialMatchIdFromURL) return; // came from an explicit link — respect it exactly
     try {
       const activeId = await (await fetch(DB_URL + '/activeMatchId.json')).json();
       if (!activeId || activeId === matchId) return;
