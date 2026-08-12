@@ -1323,7 +1323,8 @@
   document.getElementById('halfB').addEventListener('click', () => addPoint('b'));
 
   document.getElementById('undoBtn').addEventListener('click', (e) => {
-    e.stopPropagation(); undo();
+    e.stopPropagation();
+    undoRemote();
   });
 
   function loadHistory(){
