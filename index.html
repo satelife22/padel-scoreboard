@@ -1168,6 +1168,9 @@
     state.paused = before.paused;
     state.pausedAt = before.pausedAt;
     state.totalPausedMs = before.totalPausedMs || 0;
+    state.initialTeamAOnLeft = before.initialTeamAOnLeft !== false;
+    state.setPausedMs = before.setPausedMs || 0;
+    state.setPausedAt = before.setPausedAt || null;
 
     // Physical court orientation changes only when the engine signals a change of ends.
     // Team A/B identity never changes — this only flips which side renders where.
@@ -1855,7 +1858,7 @@
     if (banner) banner.classList.remove('show');
   }
 
-  document.addEventListener('click', () => { requestWakeLock(); unlockVoice(); }, { once: true });
+  document.addEventListener('click', () => { requestWakeLock(); unlockVoice(); }, { once: true, capture: true });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible'){
       requestWakeLock();
@@ -2050,28 +2053,41 @@
     subscribeToMatch();
   }
 
-  subscribeToMatch();
-  render(null); // instant local paint while the stream connects
-  updateTimer();
+  // If we didn't arrive via an explicit share link (?m=...), resolve which match is
+  // currently active BEFORE subscribing to or seeding anything — otherwise a bare-URL
+  // load creates a random blank match, subscribes, and Firebase reporting that new
+  // match as empty triggers a write to /activeMatchId that can clobber the real
+  // active match's pointer before this lookup ever gets to read it.
+  function fetchWithTimeout(url, ms){
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return fetch(url, {signal: controller.signal}).finally(() => clearTimeout(timer));
+  }
 
-  // If we didn't arrive via an explicit share link (?m=...), try to rejoin whatever
-  // match is currently active instead of silently sitting on a brand new blank one.
-  // This matters a lot for a home-screen bookmark: iOS frequently reloads a backgrounded
-  // page, and without this, every reload would silently start a fresh, disconnected
-  // match — which looks fine in the moment but never gets recorded properly.
-  (async function tryRejoinActiveMatch(){
-    if (initialMatchIdFromURL) return; // came from an explicit link — respect it exactly
-    try {
-      const activeId = await (await fetch(DB_URL + '/activeMatchId.json')).json();
-      if (!activeId || activeId === matchId) return;
-      const activeState = await (await fetch(DB_URL + '/matches/' + activeId + '/state.json')).json();
-      if (activeState && activeState.matchStarted && !activeState.matchOver){
-        matchId = activeId;
-        setMatchIdInURL(matchId);
-        subscribeToMatch(); // reconnect streams to the real active match
-      }
-    } catch(err){ /* offline, or no active match yet — the fresh local match is fine */ }
-  })();
+  async function initialiseApp(){
+    if (!initialMatchIdFromURL){
+      try {
+        const activeId = await (await fetchWithTimeout(DB_URL + '/activeMatchId.json', 4000)).json();
+        if (activeId){
+          const activeState = await (await fetchWithTimeout(DB_URL + '/matches/' + activeId + '/state.json', 4000)).json();
+          if (activeState && activeState.matchStarted && !activeState.matchOver){
+            matchId = activeId;
+            setMatchIdInURL(matchId);
+            const voiceOn = state.voiceOn;
+            state = Object.assign(freshState(), activeState);
+            state.voiceOn = voiceOn;
+            if (typeof activeState.rev === 'number') lastKnownRev = activeState.rev;
+          }
+        }
+      } catch(err){ /* offline, slow connection, or no active match yet — the fresh local match is fine */ }
+    }
+    updateShareLink();
+    subscribeToMatch();
+    render(null);
+    updateTimer();
+  }
+
+  initialiseApp();
 })();
 </script>
 </body>
