@@ -1778,7 +1778,11 @@
     if (!key || processedCommandKeys.has(key)) return;
     processedCommandKeys.add(key);
     firebaseDelete('/matches/' + matchId + '/commands/' + key + '.json');
-    if (cmd && (cmd.team === 'a' || cmd.team === 'b')) addPoint(cmd.team);
+    if (cmd && (cmd.team === 'a' || cmd.team === 'b')) {
+      addPoint(cmd.team);
+    } else if (cmd && cmd.action === 'undo') {
+      undo();
+    }
   }
 
   // Firebase's REST API streams live changes over Server-Sent Events — no SDK needed.
