@@ -1074,12 +1074,13 @@
     speak((sig ? sig + '. ' : '') + spokenScore() + extra);
   }
 
-  function snapshotForSharedUndo(s){
+  function snapshotForRemoteUndo(s){
     const snap = clone(s);
-    // These aren't part of the scoring state we need to restore.
+    // Device-specific / transient values should not be part of the shared undo snapshot.
     delete snap.voiceOn;
     delete snap.rev;
-    delete snap.undoStack;
+    // Critical: never nest previousState inside another previousState.
+    delete snap.previousState;
     return snap;
   }
 
@@ -1088,20 +1089,18 @@
     if (state.matchOver) return;
     markDirty();
     const before = clone(state);
+
+    // Keep existing local browser undo history for the orange Undo button.
     history.push(before);
     if (history.length > 200) history.shift();
 
-    // Shared undo history — travels with the synced state, so another device
-    // (e.g. a Watch Undo processed by whichever phone is listening) can undo
-    // a point even if it didn't process the original scoring command itself.
-    // Capped much lower than the local history, since every point re-sends
-    // the whole state object — a deep stack would bloat every single write.
-    if (!Array.isArray(state.undoStack)) state.undoStack = [];
-    state.undoStack.push(snapshotForSharedUndo(before));
-    if (state.undoStack.length > 20) state.undoStack.shift();
-
     const result = PadelEngine.applyPointWithInfo(state, team);
     state = result.state;
+
+    // Store exactly ONE complete pre-point state with the current synced match.
+    // Because previousState is part of the same Firebase /state PUT, any connected
+    // device can reliably undo the most recent point.
+    state.previousState = snapshotForRemoteUndo(before);
 
     render(team);
     announcePoint(team, before, result.info);
@@ -1122,14 +1121,18 @@
   }
 
   function undoRemote(){
-    if (!Array.isArray(state.undoStack) || !state.undoStack.length) return;
+    if (!state.previousState) return;
     const wasMatchOver = state.matchOver;
-    const previous = clone(state.undoStack[state.undoStack.length - 1]);
-    const remainingUndoStack = state.undoStack.slice(0, -1);
-    const voiceOn = state.voiceOn; // personal — keep this device's own setting
+    const voiceOn = state.voiceOn;
+    const previous = clone(state.previousState);
+    // Restore the complete state exactly as it existed before the last point.
     state = Object.assign(freshState(), previous);
+    // Voice preference belongs to the displaying device.
     state.voiceOn = voiceOn;
-    state.undoStack = remainingUndoStack;
+    // Remote Undo is intentionally one-level. Once we restore the previous
+    // state, consume the shared snapshot.
+    delete state.previousState;
+    // If the accidental point completed the match, remove the false history entry.
     if (wasMatchOver && !state.matchOver){
       deleteMatchHistory();
     }
