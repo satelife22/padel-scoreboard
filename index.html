@@ -966,21 +966,14 @@
     interruptClip();
     await playComboClip(key, myToken);
   }
-  // Always announce in the order the score visually reads on screen (left, then
-  // right) — not server-first. Server-first is the real umpire convention, but it
-  // doesn't match what's displayed, which was confusing ("forty fifteen" when the
-  // screen clearly reads 15-40). Follows the court-flip feature automatically.
-  function announceOrder(){
-    return state.teamAOnLeft === false ? ['b', 'a'] : ['a', 'b'];
-  }
-
   function comboKeyForScore(){
     if (state.tiebreak) return null; // tiebreak always uses synthesis, by request
     if (state.pts.a === 'AD') return 'advantage-team-a';
     if (state.pts.b === 'AD') return 'advantage-team-b';
     if (state.pts.a === 40 && state.pts.b === 40) return null; // Deuce — single-word clip already covers this
     if (state.pts.a === state.pts.b) return scoreWord(state.pts.a) + '-all';
-    const [first, second] = announceOrder();
+    let first = 'a', second = 'b';
+    if (state.servingActive){ first = state.serveOrder[state.serverIndex].t; second = other(first); }
     return scoreWord(state.pts[first]) + '-' + scoreWord(state.pts[second]);
   }
   function speakTTS(text, token){
@@ -1031,7 +1024,8 @@
   }
   function scoreWord(p){ return p === 0 ? 'love' : String(p); }
   function spokenScore(){
-    const [first, second] = announceOrder();
+    let first = 'a', second = 'b';
+    if (state.servingActive){ first = state.serveOrder[state.serverIndex].t; second = other(first); }
     if (!state.tiebreak){
       if (state.pts.a === 'AD') return 'Advantage ' + teamAnnounceName('a');
       if (state.pts.b === 'AD') return 'Advantage ' + teamAnnounceName('b');
