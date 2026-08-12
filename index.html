@@ -1074,6 +1074,15 @@
     speak((sig ? sig + '. ' : '') + spokenScore() + extra);
   }
 
+  function snapshotForSharedUndo(s){
+    const snap = clone(s);
+    // These aren't part of the scoring state we need to restore.
+    delete snap.voiceOn;
+    delete snap.rev;
+    delete snap.undoStack;
+    return snap;
+  }
+
   function addPoint(team, opts){
     opts = opts || {};
     if (state.matchOver) return;
@@ -1081,6 +1090,15 @@
     const before = clone(state);
     history.push(before);
     if (history.length > 200) history.shift();
+
+    // Shared undo history — travels with the synced state, so another device
+    // (e.g. a Watch Undo processed by whichever phone is listening) can undo
+    // a point even if it didn't process the original scoring command itself.
+    // Capped much lower than the local history, since every point re-sends
+    // the whole state object — a deep stack would bloat every single write.
+    if (!Array.isArray(state.undoStack)) state.undoStack = [];
+    state.undoStack.push(snapshotForSharedUndo(before));
+    if (state.undoStack.length > 20) state.undoStack.shift();
 
     const result = PadelEngine.applyPointWithInfo(state, team);
     state = result.state;
@@ -1097,6 +1115,22 @@
     if (wasMatchOver && !state.matchOver){
       // The winning point was undone — this match is no longer complete.
       // Remove its history record so it doesn't linger as a false "completed" entry.
+      deleteMatchHistory();
+    }
+    markDirty();
+    render(null);
+  }
+
+  function undoRemote(){
+    if (!Array.isArray(state.undoStack) || !state.undoStack.length) return;
+    const wasMatchOver = state.matchOver;
+    const previous = clone(state.undoStack[state.undoStack.length - 1]);
+    const remainingUndoStack = state.undoStack.slice(0, -1);
+    const voiceOn = state.voiceOn; // personal — keep this device's own setting
+    state = Object.assign(freshState(), previous);
+    state.voiceOn = voiceOn;
+    state.undoStack = remainingUndoStack;
+    if (wasMatchOver && !state.matchOver){
       deleteMatchHistory();
     }
     markDirty();
@@ -1781,7 +1815,7 @@
     if (cmd && (cmd.team === 'a' || cmd.team === 'b')) {
       addPoint(cmd.team);
     } else if (cmd && cmd.action === 'undo') {
-      undo();
+      undoRemote();
     }
   }
 
