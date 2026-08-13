@@ -272,21 +272,24 @@
   .miniExpandHead span:first-child{ text-align:left; }
   .miniExpandRow{
     display:grid; grid-template-columns:1fr repeat(var(--mx-cols, 1), minmax(46px, 1fr));
-    gap:10px; align-items:center; padding:12px 16px; border-radius:14px;
+    gap:10px; align-items:center; padding:6px 0;
   }
-  .miniExpandRow.team-a{ background:var(--teamA); color:var(--teamA-ink); }
-  .miniExpandRow.team-b{ background:var(--teamB); color:var(--teamB-ink); }
   .miniExpandRow .mxLabel{
-    display:flex; align-items:center;
-    font-size:clamp(14px, 3.8vw, 20px); font-weight:800; color:inherit;
+    display:flex; align-items:center; gap:10px;
+    font-size:clamp(18px, 5vw, 26px); font-weight:800; color:var(--net);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
+  .miniExpandRow .mxLabel::before{
+    content:''; width:14px; height:14px; border-radius:50%; flex-shrink:0;
+  }
+  .miniExpandRow.team-a .mxLabel::before{ background:var(--teamA); }
+  .miniExpandRow.team-b .mxLabel::before{ background:var(--teamB); }
   .miniExpandRow span:not(.mxLabel){
-    text-align:center; font-size:clamp(26px, 8vw, 44px); font-weight:800; color:inherit;
+    text-align:center; font-size:clamp(26px, 8vw, 44px); font-weight:800; color:var(--net);
     opacity:.55; font-family: 'Archivo Black', sans-serif;
   }
   .miniExpandRow span.current{ opacity:1; }
-  .miniExpandRow span.tiebreak{ text-decoration:underline; text-decoration-thickness:3px; text-underline-offset:4px; }
+  .miniExpandRow span.tiebreak{ color:#FFD166; }
   .miniExpandServer{
     text-align:center; font-size:15px; font-weight:700; letter-spacing:.03em;
     color:var(--net); opacity:.85; padding-top:2px;
@@ -1391,11 +1394,7 @@
       row.style.setProperty('--mx-cols', cols.length);
       const label = document.createElement('span');
       label.className = 'mxLabel';
-      const names = state.players[team];
-      const hasNames = state.servingActive && (names[0] || names[1]);
-      label.textContent = hasNames
-        ? (teamLabel(team) + ' \u00b7 ' + (names[0] || 'P1') + '/' + (names[1] || 'P2'))
-        : teamLabel(team);
+      label.textContent = teamBoxLabel(team);
       row.appendChild(label);
       cols.forEach(c => {
         const s = document.createElement('span');
