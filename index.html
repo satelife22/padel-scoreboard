@@ -1176,6 +1176,16 @@
     // Team A/B identity never changes — this only flips which side renders where.
     state.teamAOnLeft = (result.info && result.info.changeEnds) ? !before.teamAOnLeft : before.teamAOnLeft;
 
+    // The engine (untouched) records completed-set duration as raw elapsed time with
+    // no pause awareness — correct that entry here so it agrees with the pause-aware
+    // live timer instead of including any breaks taken during that set.
+    if (result.info && result.info.setWon && state.setHistory.length){
+      const completedSetMins = Math.max(0, Math.round(
+        (Date.now() - before.setStartTime - (before.setPausedMs || 0)) / 60000
+      ));
+      state.setHistory[state.setHistory.length - 1].mins = completedSetMins;
+    }
+
     // A new set starts its own clean pause tally — otherwise pauses from the set
     // that just ended would incorrectly carry over and skew the new set's duration.
     if (result.info && result.info.setWon){
@@ -1687,6 +1697,7 @@
   // Player setup modal
   function openPlayerSetup(){
     closeMiniExpand();
+    setupSkippedPlayers = false;
     document.getElementById('inA1').value = state.players.a[0];
     document.getElementById('inA2').value = state.players.a[1];
     document.getElementById('inB1').value = state.players.b[0];
@@ -1701,6 +1712,7 @@
   let setupNames = null;   // {a:[..], b:[..]} captured once step2 is built
   let setupFirst = null;   // {t, p} chosen in step2
   let setupSecond = null;  // {t, p} chosen in step3, held until court side is picked in step4
+  let setupSkippedPlayers = false; // true if "Skip players" was used — step 4 still asks court side
 
   function setupPlayerName(team, idx){
     return setupNames[team][idx];
@@ -1791,21 +1803,43 @@
   });
   document.getElementById('teamALeftBtn').addEventListener('click', (e) => {
     e.stopPropagation();
-    finishSetup(setupFirst, setupSecond, true);
+    if (setupSkippedPlayers) finishSkipSetup(true);
+    else finishSetup(setupFirst, setupSecond, true);
   });
   document.getElementById('teamARightBtn').addEventListener('click', (e) => {
     e.stopPropagation();
-    finishSetup(setupFirst, setupSecond, false);
+    if (setupSkippedPlayers) finishSkipSetup(false);
+    else finishSetup(setupFirst, setupSecond, false);
   });
   document.getElementById('setupBack3').addEventListener('click', (e) => {
     e.stopPropagation();
     el.setupStep4.style.display = 'none';
-    el.setupStep3.style.display = '';
+    if (setupSkippedPlayers){
+      setupSkippedPlayers = false;
+      el.setupStep1.style.display = '';
+    } else {
+      el.setupStep3.style.display = '';
+    }
   });
   document.getElementById('setupSkip').addEventListener('click', (e) => {
     e.stopPropagation();
+    setupSkippedPlayers = true;
+    el.setupStep1.style.display = 'none';
+    el.setupStep2.style.display = 'none';
+    el.setupStep3.style.display = 'none';
+    el.setupStep4.style.display = '';
+  });
+
+  function finishSkipSetup(teamAOnLeft){
     state.servingActive = false;
     state.players = {a:['',''], b:['','']};
+    state.teamAOnLeft = teamAOnLeft;
+    state.initialTeamAOnLeft = teamAOnLeft;
+    state.paused = false;
+    state.pausedAt = null;
+    state.totalPausedMs = 0;
+    state.setPausedMs = 0;
+    state.setPausedAt = null;
     const now = Date.now();
     state.startTime = now;
     state.setStartTime = now;
@@ -1813,7 +1847,7 @@
     markDirty();
     el.playerSetup.classList.remove('show');
     render(null);
-  });
+  }
 
   // Keep the screen awake courtside, if supported.
   let wakeLock = null;
@@ -1974,6 +2008,7 @@
     state = Object.assign(freshState(), remote);
     state.voiceOn = voiceOn;
     render(null); // repaint only — no voice announcement for changes made on other devices
+    updateTimer();
     handleFreshCheck();
   }
 
