@@ -1848,6 +1848,7 @@
     state.startTime = now;
     state.setStartTime = now;
     state.matchStarted = true;
+    rotateMatchId();
     markDirty();
     el.playerSetup.classList.remove('show');
     render(null);
@@ -1913,6 +1914,7 @@
     state.startTime = now;
     state.setStartTime = now;
     state.matchStarted = true;
+    rotateMatchId();
     markDirty();
     el.playerSetup.classList.remove('show');
     render(null);
@@ -2019,9 +2021,14 @@
     state.setsToWin = setsToWin;
     history = [];
     overlayDismissed = false;
-    rotateMatchId();
-    markDirty();
-    render(null);
+    // Don't rotate matchId / go active yet — that only happens once setup genuinely
+    // finishes (finishSetup / finishSkipSetup), so a still-being-configured match is
+    // never pushed to other devices as "the" active match. Disconnect from the
+    // previous match's streams too, so a Watch command or update meant for that old
+    // match can't get processed (and consumed) against this transient local state.
+    if (matchStream){ matchStream.close(); matchStream = null; }
+    if (commandStream){ commandStream.close(); commandStream = null; }
+    render(null); // local paint only — markDirty() was never called, so nothing syncs
     updateTimer();
     openPlayerSetup();
   }
@@ -2059,6 +2066,11 @@
   });
 
   function handleMatchUpdate(remote){
+    if (el.playerSetup.classList.contains('show')){
+      // A new match is being configured locally and hasn't gone active yet — don't
+      // let an update for whatever match this device was previously on clobber it.
+      return;
+    }
     if (!remote){
       // Nothing at this match's location yet — this device seeds the first record.
       markDirty();
