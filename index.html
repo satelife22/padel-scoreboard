@@ -706,6 +706,30 @@
     if (entry.body !== undefined) opts.body = JSON.stringify(entry.body);
     return fetch(DB_URL + entry.path, opts);
   }
+  function isMatchStateWrite(entry){
+    return entry && entry.method === 'PUT' && typeof entry.path === 'string'
+      && /\/matches\/[^/]+\/state\.json$/.test(entry.path)
+      && entry.body && typeof entry.body.rev === 'number';
+  }
+  async function sendWriteSafely(entry){
+    // Non-state writes (commands, history, points, deletes) go through unchanged.
+    if (!isMatchStateWrite(entry)) return sendWrite(entry);
+    try {
+      const current = await fetch(DB_URL + entry.path).then(r => r.json());
+      const remoteRev = (current && typeof current.rev === 'number') ? current.rev : 0;
+      const queuedRev = (entry.body && typeof entry.body.rev === 'number') ? entry.body.rev : 0;
+      if (remoteRev > queuedRev){
+        // Firebase already has a newer state than this queued write — it's obsolete,
+        // most likely from a device that was offline/asleep. Discard, don't send.
+        return {ok: true, staleDiscarded: true};
+      }
+      return await sendWrite(entry);
+    } catch(err){
+      // Couldn't verify the current revision — leave it queued and retry later
+      // rather than risk either overwriting something newer or losing the write.
+      throw err;
+    }
+  }
   function firebaseWrite(method, path, body){
     // A newer write to the same location always supersedes an older queued one —
     // otherwise a stale retry (e.g. a mid-game update that failed to send earlier)
@@ -714,7 +738,7 @@
     const entry = {id: genId(), method, path, body, queuedAt: Date.now()};
     pendingWrites.push(entry);
     savePending(pendingWrites);
-    sendWrite(entry).then(r => {
+    sendWriteSafely(entry).then(r => {
       if (r && r.ok){ pendingWrites = pendingWrites.filter(w => w.id !== entry.id); savePending(pendingWrites); }
     }).catch(() => { /* stays queued — retried below */ });
   }
@@ -723,7 +747,7 @@
   function retryPendingWrites(){
     if (!pendingWrites.length) return;
     pendingWrites.slice().forEach(entry => {
-      sendWrite(entry).then(r => {
+      sendWriteSafely(entry).then(r => {
         if (r && r.ok){ pendingWrites = pendingWrites.filter(w => w.id !== entry.id); savePending(pendingWrites); }
       }).catch(() => { /* still offline — try again next tick */ });
     });
@@ -751,7 +775,13 @@
     payload.rev = Date.now();
     lastKnownRev = payload.rev; // optimistic — we know we're at least this fresh now
     firebasePut('/matches/' + matchId + '/state.json', payload);
-    firebasePut('/activeMatchId.json', matchId);
+    // activeMatchId is a current pointer, not historical state — never queue/replay
+    // a stale pointer write after a browser wakes up from being backgrounded.
+    fetch(DB_URL + '/activeMatchId.json', {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(matchId)
+    }).catch(() => { /* not queued — the next valid local mutation will write it again */ });
   }
 
   const VOICE_PREF_KEY = 'padelVoicePref';
@@ -771,6 +801,7 @@
   const savedVoicePref = loadVoicePref();
   if (typeof savedVoicePref.voiceOn === 'boolean') state.voiceOn = savedVoicePref.voiceOn;
   let history = [];
+  let lastHandledDisplayEventId = null; // local only — never persisted to Firebase
 
   const el = {
     app: document.getElementById('app'),
@@ -1150,6 +1181,18 @@
     }
   }
 
+  // Reacts to a shared game/set-won event, deduped by id so it only fires once per
+  // device regardless of how the state update arrived (local point, remote sync,
+  // or the initial page load echoing back an event this device already showed).
+  function handleSharedDisplayEvent(event){
+    if (!event || !event.id) return;
+    if (event.id === lastHandledDisplayEventId) return;
+    lastHandledDisplayEventId = event.id;
+    if (event.type === 'gameWon' || event.type === 'setWon'){
+      openMiniExpand(GAME_SCORE_DISPLAY_MS);
+    }
+  }
+
   function addPoint(team, opts){
     opts = opts || {};
     if (state.matchOver) return;
@@ -1193,6 +1236,16 @@
       state.setPausedAt = null;
     }
 
+    // A shared, transient event so every connected device (not just the one that
+    // scored the point) shows the same brief game/set progress popup — deduped by id.
+    if (result.info && !state.matchOver && (result.info.gameWon || result.info.setWon)){
+      state.lastDisplayEvent = {
+        id: genId(),
+        type: result.info.setWon ? 'setWon' : 'gameWon',
+        ts: Date.now()
+      };
+    }
+
     // Store exactly ONE complete pre-point state with the current synced match.
     // Because previousState is part of the same Firebase /state PUT, any connected
     // device can reliably undo the most recent point.
@@ -1204,7 +1257,7 @@
       // The existing match-winner overlay takes priority — never show both.
       closeMiniExpand();
     } else if (result.info && (result.info.setWon || result.info.gameWon)){
-      openMiniExpand(GAME_SCORE_DISPLAY_MS);
+      handleSharedDisplayEvent(state.lastDisplayEvent);
     }
 
     announcePoint(team, before, result.info);
@@ -1242,6 +1295,9 @@
     if (wasMatchOver && !state.matchOver){
       deleteMatchHistory();
     }
+    // Sync the local tracker to whatever event (if any) survived the restore —
+    // don't intentionally replay a popup as a side effect of undoing.
+    lastHandledDisplayEventId = (state.lastDisplayEvent && state.lastDisplayEvent.id) ? state.lastDisplayEvent.id : null;
     markDirty();
     render(null);
   }
@@ -1912,14 +1968,16 @@
       // iOS aggressively suspends a backgrounded tab's live connections — coming back
       // into view is exactly when a Watch command (or another device starting a new
       // match) is most likely to have been missed, so check /activeMatchId first.
+      subscribeToActiveMatch();
       checkForCurrentActiveMatch();
       retryPendingWrites();
     }
   });
-  window.addEventListener('pageshow', (e) => {
-    if (e.persisted){ // restored from the back-forward cache — same staleness risk
-      checkForCurrentActiveMatch();
-    }
+  window.addEventListener('pageshow', () => {
+    // Safe on a normal load too — subscribeToMatch/subscribeToActiveMatch always
+    // close any previous stream first, so this can't create duplicate connections.
+    subscribeToActiveMatch();
+    checkForCurrentActiveMatch();
   });
 
   // Show the unlock prompt only if voice is on and this device hasn't been tapped yet.
@@ -2019,6 +2077,7 @@
     state.voiceOn = voiceOn;
     render(null); // repaint only — no voice announcement for changes made on other devices
     updateTimer();
+    handleSharedDisplayEvent(state.lastDisplayEvent);
     handleFreshCheck();
   }
 
@@ -2121,6 +2180,9 @@
           state = Object.assign(freshState(), activeState);
           state.voiceOn = voiceOn;
           if (typeof activeState.rev === 'number') lastKnownRev = activeState.rev;
+          if (activeState.lastDisplayEvent && activeState.lastDisplayEvent.id){
+            lastHandledDisplayEventId = activeState.lastDisplayEvent.id;
+          }
         }
       }
     } catch(err){ /* offline, slow connection, or no active match yet — the fresh local match is fine */ }
@@ -2163,6 +2225,9 @@
       state = Object.assign(freshState(), remoteState);
       state.voiceOn = voiceOn;
       lastKnownRev = (typeof remoteState.rev === 'number') ? remoteState.rev : 0;
+      if (remoteState.lastDisplayEvent && remoteState.lastDisplayEvent.id){
+        lastHandledDisplayEventId = remoteState.lastDisplayEvent.id;
+      }
       history = [];
       overlayDismissed = false;
       updateShareLink();
