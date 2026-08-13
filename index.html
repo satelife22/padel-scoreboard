@@ -547,7 +547,7 @@
 <div id="confirmAllModal">
   <div class="panel">
     <h2>Start a new game?</h2>
-    <p>Set your player names and prepare to play.</p>
+    <p id="confirmAllText">Set your player names and prepare to play.</p>
     <div class="panelBtns">
       <button id="confirmAllNo">Cancel</button>
       <button id="confirmAllYes">Start New Game</button>
@@ -1415,8 +1415,12 @@
 
   function elapsedMatchMs(){
     const now = Date.now();
+    const start = Number(state.startTime);
+    if (!Number.isFinite(start) || start <= 0 || start > now + 60000){
+      return 0;
+    }
     const effectiveNow = (state.paused && state.pausedAt) ? state.pausedAt : now;
-    return Math.max(0, effectiveNow - state.startTime - (state.totalPausedMs || 0));
+    return Math.max(0, effectiveNow - start - (state.totalPausedMs || 0));
   }
 
   function elapsedSetMs(){
@@ -1589,8 +1593,17 @@
     el.settings.classList.remove('show');
   });
 
-  document.getElementById('newGameBtn').addEventListener('click', (e) => {
+  document.getElementById('newGameBtn').addEventListener('click', async (e) => {
     e.stopPropagation();
+    const textEl = document.getElementById('confirmAllText');
+    let warnAboutActiveMatch = false;
+    try {
+      const active = await getCurrentActiveMatch();
+      if (active && active.id !== matchId) warnAboutActiveMatch = true;
+    } catch(err){ /* if the check fails, fall back to the normal confirm — not a hard block */ }
+    textEl.textContent = warnAboutActiveMatch
+      ? 'A match is currently in progress. Starting a new game will make this the active match on all connected devices. Continue?'
+      : 'Set your player names and prepare to play.';
     document.getElementById('confirmAllModal').classList.add('show');
   });
   document.getElementById('confirmAllNo').addEventListener('click', (e) => {
@@ -1897,18 +1910,15 @@
     if (document.visibilityState === 'visible'){
       requestWakeLock();
       // iOS aggressively suspends a backgrounded tab's live connections — coming back
-      // into view is exactly when a Watch command is most likely to have been missed,
-      // so force a clean reconnect and pull the latest state rather than trusting
-      // whatever connection (if any) survived the background period.
-      subscribeToMatch();
-      fetch(DB_URL + '/matches/' + matchId + '/state.json').then(r => r.json()).then(handleMatchUpdate).catch(() => {});
+      // into view is exactly when a Watch command (or another device starting a new
+      // match) is most likely to have been missed, so check /activeMatchId first.
+      checkForCurrentActiveMatch();
       retryPendingWrites();
     }
   });
   window.addEventListener('pageshow', (e) => {
     if (e.persisted){ // restored from the back-forward cache — same staleness risk
-      subscribeToMatch();
-      fetch(DB_URL + '/matches/' + matchId + '/state.json').then(r => r.json()).then(handleMatchUpdate).catch(() => {});
+      checkForCurrentActiveMatch();
     }
   });
 
@@ -2100,26 +2110,97 @@
   }
 
   async function initialiseApp(){
-    if (!initialMatchIdFromURL){
-      try {
-        const activeId = await (await fetchWithTimeout(DB_URL + '/activeMatchId.json', 4000)).json();
-        if (activeId){
-          const activeState = await (await fetchWithTimeout(DB_URL + '/matches/' + activeId + '/state.json', 4000)).json();
-          if (activeState && activeState.matchStarted && !activeState.matchOver){
-            matchId = activeId;
-            setMatchIdInURL(matchId);
-            const voiceOn = state.voiceOn;
-            state = Object.assign(freshState(), activeState);
-            state.voiceOn = voiceOn;
-            if (typeof activeState.rev === 'number') lastKnownRev = activeState.rev;
-          }
+    try {
+      const activeId = await (await fetchWithTimeout(DB_URL + '/activeMatchId.json', 4000)).json();
+      if (activeId){
+        const activeState = await (await fetchWithTimeout(DB_URL + '/matches/' + activeId + '/state.json', 4000)).json();
+        if (activeState && activeState.matchStarted && !activeState.matchOver){
+          matchId = activeId;
+          setMatchIdInURL(matchId);
+          const voiceOn = state.voiceOn;
+          state = Object.assign(freshState(), activeState);
+          state.voiceOn = voiceOn;
+          if (typeof activeState.rev === 'number') lastKnownRev = activeState.rev;
         }
-      } catch(err){ /* offline, slow connection, or no active match yet — the fresh local match is fine */ }
-    }
+      }
+    } catch(err){ /* offline, slow connection, or no active match yet — the fresh local match is fine */ }
     updateShareLink();
     subscribeToMatch();
+    subscribeToActiveMatch();
     render(null);
     updateTimer();
+  }
+
+  // Live subscription to /activeMatchId itself — so if a DIFFERENT device starts a new
+  // match, every other open scoreboard follows it automatically, without needing a
+  // refresh or an explicit share link. This is what makes /activeMatchId the single
+  // source of truth for which match is "the" live match across all devices.
+  let activeMatchStream = null;
+  function subscribeToActiveMatch(){
+    if (activeMatchStream) activeMatchStream.close();
+    activeMatchStream = new EventSource(DB_URL + '/activeMatchId.json');
+    activeMatchStream.addEventListener('put', async (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.path !== '/') return;
+        const newActiveId = msg.data;
+        if (!newActiveId) return;
+        if (newActiveId === matchId) return; // our own write echoing back — already there
+        await switchToActiveMatch(newActiveId);
+      } catch(err){ /* ignore malformed or temporary stream errors */ }
+    });
+  }
+
+  // Switch this device over to a different match that just became active elsewhere.
+  async function switchToActiveMatch(newMatchId){
+    if (!newMatchId || newMatchId === matchId) return;
+    try {
+      const remoteState = await (await fetchWithTimeout(DB_URL + '/matches/' + newMatchId + '/state.json', 4000)).json();
+      if (!remoteState || !remoteState.matchStarted || remoteState.matchOver) return;
+      const voiceOn = state.voiceOn;
+      matchId = newMatchId;
+      setMatchIdInURL(matchId);
+      state = Object.assign(freshState(), remoteState);
+      state.voiceOn = voiceOn;
+      lastKnownRev = (typeof remoteState.rev === 'number') ? remoteState.rev : 0;
+      history = [];
+      overlayDismissed = false;
+      updateShareLink();
+      subscribeToMatch();
+      render(null);
+      updateTimer();
+    } catch(err){ /* leave the current display unchanged if the new match can't be loaded */ }
+  }
+
+  // Look up whichever match is genuinely active right now, without switching to it —
+  // used before "Start New Game" to warn if that would replace a match still in progress.
+  async function getCurrentActiveMatch(){
+    try {
+      const activeId = await (await fetchWithTimeout(DB_URL + '/activeMatchId.json', 4000)).json();
+      if (!activeId) return null;
+      const activeState = await (await fetchWithTimeout(DB_URL + '/matches/' + activeId + '/state.json', 4000)).json();
+      if (activeState && activeState.matchStarted && !activeState.matchOver){
+        return {id: activeId, state: activeState};
+      }
+    } catch(err){ /* ignore — treat as no active match */ }
+    return null;
+  }
+
+  // Re-check /activeMatchId whenever the tab comes back into view — a backgrounded
+  // Safari tab can sit for a long time, during which a different device may have
+  // started an entirely different match.
+  async function checkForCurrentActiveMatch(){
+    try {
+      const activeId = await (await fetchWithTimeout(DB_URL + '/activeMatchId.json', 4000)).json();
+      if (activeId && activeId !== matchId){
+        await switchToActiveMatch(activeId);
+        return;
+      }
+      subscribeToMatch();
+      fetch(DB_URL + '/matches/' + matchId + '/state.json').then(r => r.json()).then(handleMatchUpdate).catch(() => {});
+    } catch(err){
+      subscribeToMatch();
+    }
   }
 
   initialiseApp();
