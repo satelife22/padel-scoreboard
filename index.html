@@ -278,7 +278,7 @@
   .miniExpandRow.team-b{ background:var(--teamB); color:var(--teamB-ink); }
   .miniExpandRow .mxLabel{
     display:flex; align-items:center;
-    font-size:clamp(18px, 5vw, 26px); font-weight:800; color:inherit;
+    font-size:clamp(14px, 3.8vw, 20px); font-weight:800; color:inherit;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
   .miniExpandRow span:not(.mxLabel){
@@ -289,7 +289,7 @@
   .miniExpandRow span.tiebreak{ text-decoration:underline; text-decoration-thickness:3px; text-underline-offset:4px; }
   .miniExpandServer{
     text-align:center; font-size:15px; font-weight:700; letter-spacing:.03em;
-    opacity:.8; padding-top:2px;
+    color:var(--net); opacity:.85; padding-top:2px;
   }
   .miniExpandDur{ border-top:1px solid rgba(255,255,255,0.12); margin-top:4px; padding-top:10px; }
   .miniExpandDur span{
@@ -1391,7 +1391,11 @@
       row.style.setProperty('--mx-cols', cols.length);
       const label = document.createElement('span');
       label.className = 'mxLabel';
-      label.textContent = teamBoxLabel(team);
+      const names = state.players[team];
+      const hasNames = state.servingActive && (names[0] || names[1]);
+      label.textContent = hasNames
+        ? (teamLabel(team) + ' \u00b7 ' + (names[0] || 'P1') + '/' + (names[1] || 'P2'))
+        : teamLabel(team);
       row.appendChild(label);
       cols.forEach(c => {
         const s = document.createElement('span');
