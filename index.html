@@ -1157,8 +1157,9 @@
     // Device-specific / transient values should not be part of the shared undo snapshot.
     delete snap.voiceOn;
     delete snap.rev;
-    // Critical: never nest previousState inside another previousState.
+    // Critical: never nest the undo stack inside one of its own entries.
     delete snap.previousState;
+    delete snap.undoStack;
     return snap;
   }
 
@@ -1250,10 +1251,16 @@
       };
     }
 
-    // Store exactly ONE complete pre-point state with the current synced match.
-    // Because previousState is part of the same Firebase /state PUT, any connected
-    // device can reliably undo the most recent point.
-    state.previousState = snapshotForRemoteUndo(before);
+    // Multi-step undo: keep a capped stack of pre-point snapshots (not just the
+    // last one), so the umpire can walk back several points or even games in a
+    // row — e.g. correcting a run of points scored to the wrong team.
+    const UNDO_STACK_CAP = 30;
+    const stack = Array.isArray(before.undoStack) ? before.undoStack.slice() : [];
+    stack.push(snapshotForRemoteUndo(before));
+    if (stack.length > UNDO_STACK_CAP) stack.shift();
+    state.undoStack = stack;
+    // Kept for compatibility with anything still reading the old single-slot field.
+    delete state.previousState;
 
     render(team);
 
@@ -1283,18 +1290,20 @@
   }
 
   function undoRemote(){
-    if (!state.previousState) return;
+    const stack = Array.isArray(state.undoStack) ? state.undoStack : [];
+    if (!stack.length) return;
     closeMiniExpand();
     const wasMatchOver = state.matchOver;
     const voiceOn = state.voiceOn;
-    const previous = clone(state.previousState);
-    // Restore the complete state exactly as it existed before the last point.
+    const remaining = stack.slice(0, -1);
+    const previous = clone(stack[stack.length - 1]);
+    // Restore the complete state exactly as it existed before that point.
     state = Object.assign(freshState(), previous);
     // Voice preference belongs to the displaying device.
     state.voiceOn = voiceOn;
-    // Remote Undo is intentionally one-level. Once we restore the previous
-    // state, consume the shared snapshot.
-    delete state.previousState;
+    // Carry the rest of the stack forward — pressing Undo again keeps walking
+    // further back, rather than stopping after a single step.
+    state.undoStack = remaining;
     // If the accidental point completed the match, remove the false history entry.
     if (wasMatchOver && !state.matchOver){
       deleteMatchHistory();
