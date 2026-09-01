@@ -220,7 +220,7 @@
   #confirmEndNo{ background:var(--net); color:#101816; }
 
   #historyModal{
-    position:fixed; inset:0; z-index:80;
+    position:fixed; inset:0; z-index:210;
     background:rgba(6,12,10,0.94);
     display:none; align-items:center; justify-content:center;
     padding: 20px 16px;
@@ -330,21 +330,59 @@
 
   #adminDashboard{
     position:fixed; inset:0; z-index:190;
-    background:rgba(6,12,10,0.97);
-    display:none; align-items:center; justify-content:center;
-    padding: 20px 16px;
+    background:var(--bg);
+    display:none;
   }
   #adminDashboard.show{ display:flex; }
-  #dashboardLogo{ display:block; width:100%; max-width:220px; margin:0 auto 8px; }
-  #adminDashboard h2{ text-align:center; margin:0 0 20px; }
-  #dashboardActiveMatch{
-    text-align:center; font-size:15px; line-height:1.5; opacity:.85;
-    background:rgba(242,239,230,0.06); border-radius:12px; padding:16px;
-    margin-bottom:20px; min-height:20px;
+  .receptionSidebar{
+    width:220px; flex-shrink:0; box-sizing:border-box;
+    background:rgba(0,0,0,0.25); border-right:1px solid rgba(242,239,230,0.1);
+    display:flex; flex-direction:column;
+    padding: max(24px, env(safe-area-inset-top)) 18px 18px;
+  }
+  #dashboardLogo{ display:block; width:100%; max-width:150px; margin:0 auto 32px; }
+  #receptionNav{ display:flex; flex-direction:column; gap:4px; flex:1; }
+  .receptionNavBtn{
+    background:transparent; color:var(--dim); border:none; text-align:left;
+    padding:12px 14px; border-radius:10px; font-family:inherit; font-size:15px;
+    font-weight:600; cursor:pointer; letter-spacing:.01em;
+  }
+  .receptionNavBtn:hover{ background:rgba(242,239,230,0.06); color:var(--net); }
+  .receptionNavBtn.active{ background:#8B3916; color:#FFF6EC; }
+  #dashboardLogoutBtn{
+    background:rgba(255,107,107,0.12); color:#FF6B6B; border:none;
+    border-radius:10px; padding:12px 14px; font-family:inherit; font-size:14px;
+    font-weight:700; cursor:pointer; margin-top:12px;
+  }
+  .receptionContent{
+    flex:1; overflow-y:auto; padding: max(28px, env(safe-area-inset-top)) 32px 32px;
+  }
+  .receptionPage{ display:none; max-width:900px; }
+  .receptionPage.active{ display:block; }
+  .receptionPage h1{ font-size:26px; margin:0 0 22px; letter-spacing:.01em; }
+  .receptionCardGrid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:16px;
+  }
+  .receptionCard{
+    background:#101E19; border:1px solid rgba(242,239,230,0.12); border-radius:14px;
+    padding:18px; display:flex; flex-direction:column; gap:10px;
+  }
+  .receptionCardLabel{ font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; opacity:.55; }
+  .receptionCardEmpty{ font-size:14px; opacity:.5; }
+  #dashboardActiveMatch{ font-size:15px; line-height:1.5; opacity:.9; min-height:20px; }
+  .receptionNote{ font-size:14px; opacity:.55; line-height:1.5; max-width:520px; margin-top:8px; }
+  #pageMatches button, #pageDashboard .receptionCard button{
+    display:block; width:100%; margin-top:4px;
+    padding:12px; border-radius:10px; border:none; cursor:pointer;
+    font-family:'Barlow Condensed', sans-serif; font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:14px;
   }
   #dashboardOpenBtn{ background:var(--net); color:#101816; }
-  #dashboardNewBtn{ background:rgba(242,239,230,0.12) !important; color:var(--net) !important; border:1px solid rgba(242,239,230,0.25); }
-  #dashboardLogoutBtn{ background:rgba(255,107,107,0.15) !important; color:#FF6B6B !important; font-size:14px; }
+  #dashboardNewBtn, #matchesNewBtn{ background:var(--net); color:#101816; }
+  #dashboardHistoryBtn, #matchesHistoryBtn{
+    background:rgba(242,239,230,0.1) !important; color:var(--net) !important;
+    border:1px solid rgba(242,239,230,0.22);
+  }
+  #matchesNewBtn, #matchesHistoryBtn{ max-width:280px; }
   #loginScreen input{
     width:100%; box-sizing:border-box; background:rgba(242,239,230,0.08);
     border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
@@ -505,21 +543,63 @@
 </div>
 
 <div id="adminDashboard">
-  <div class="panel">
+  <div class="receptionSidebar">
     <img id="dashboardLogo" src="images/recess-logo-transparent.png" alt="Recess Padel Club" />
-    <h2>Reception</h2>
-    <div id="dashboardActiveMatch">Checking for a match in progress…</div>
-    <div class="panelBtns">
-      <button id="dashboardOpenBtn" class="ghostBtn">Open Current Match</button>
+    <nav id="receptionNav">
+      <button class="receptionNavBtn active" data-page="pageDashboard">Dashboard</button>
+      <button class="receptionNavBtn" data-page="pageMatches">Matches</button>
+      <button class="receptionNavBtn" data-page="pageCourts">Courts</button>
+      <button class="receptionNavBtn" data-page="pageSettings">Settings</button>
+    </nav>
+    <button id="dashboardLogoutBtn">Log Out</button>
+  </div>
+  <div class="receptionContent">
+
+    <div class="receptionPage active" id="pageDashboard">
+      <h1>Dashboard</h1>
+      <div class="receptionCardGrid">
+        <div class="receptionCard" id="dashboardActiveCard">
+          <div class="receptionCardLabel">Active Match</div>
+          <div id="dashboardActiveMatch">Checking for a match in progress…</div>
+          <button id="dashboardOpenBtn" class="ghostBtn" style="display:none;">Open Current Match</button>
+        </div>
+        <div class="receptionCard">
+          <div class="receptionCardLabel">Scheduled</div>
+          <div class="receptionCardEmpty">Match scheduling isn't set up yet.</div>
+        </div>
+        <div class="receptionCard">
+          <div class="receptionCardLabel">Quick Actions</div>
+          <button id="dashboardNewBtn">Start New Game</button>
+          <button id="dashboardHistoryBtn" class="ghostBtn">View Match History</button>
+        </div>
+      </div>
     </div>
-    <div class="panelBtns">
-      <button id="dashboardNewBtn">Start New Game</button>
+
+    <div class="receptionPage" id="pageMatches">
+      <h1>Matches</h1>
+      <button id="matchesNewBtn">Start New Game</button>
+      <button id="matchesHistoryBtn" class="ghostBtn">View Match History</button>
     </div>
-    <div class="panelBtns">
-      <button id="dashboardLogoutBtn" class="ghostBtn">Log Out</button>
+
+    <div class="receptionPage" id="pageCourts">
+      <h1>Courts</h1>
+      <div class="receptionCardGrid">
+        <div class="receptionCard">
+          <div class="receptionCardLabel">Court 1</div>
+          <div id="courtsCourt1Status">Checking…</div>
+        </div>
+      </div>
+      <p class="receptionNote">Multiple simultaneous courts aren't set up yet — for now everything runs through this one court.</p>
     </div>
+
+    <div class="receptionPage" id="pageSettings">
+      <h1>Settings</h1>
+      <p class="receptionNote">Umpire and view-only links for a match are shown once you open or start it, under that match's own Settings panel.</p>
+    </div>
+
   </div>
 </div>
+
 
 <div id="app">
   <div class="half a" id="halfA">
@@ -828,8 +908,17 @@
   }
   function showAdminDashboard(){
     document.getElementById('adminDashboard').classList.add('show');
+    switchReceptionPage('pageDashboard');
+    refreshDashboardActiveMatch();
+  }
+  function hideAdminDashboard(){
+    document.getElementById('adminDashboard').classList.remove('show');
+  }
+  function refreshDashboardActiveMatch(){
     const box = document.getElementById('dashboardActiveMatch');
+    const courtBox = document.getElementById('courtsCourt1Status');
     box.textContent = 'Checking for a match in progress…';
+    if (courtBox) courtBox.textContent = 'Checking…';
     getCurrentActiveMatch().then((active) => {
       if (active && active.state){
         const s = active.state;
@@ -837,15 +926,24 @@
         const score = s.games ? (' — ' + s.games.a + '-' + s.games.b) : '';
         box.textContent = names + score;
         document.getElementById('dashboardOpenBtn').style.display = '';
+        if (courtBox) courtBox.textContent = names + score;
       } else {
         box.textContent = 'No match currently in progress.';
         document.getElementById('dashboardOpenBtn').style.display = 'none';
+        if (courtBox) courtBox.textContent = 'Idle — no match in progress.';
       }
     });
   }
-  function hideAdminDashboard(){
-    document.getElementById('adminDashboard').classList.remove('show');
+  function switchReceptionPage(pageId){
+    document.querySelectorAll('.receptionPage').forEach(p => p.classList.toggle('active', p.id === pageId));
+    document.querySelectorAll('.receptionNavBtn').forEach(b => b.classList.toggle('active', b.dataset.page === pageId));
+    if (pageId === 'pageDashboard' || pageId === 'pageCourts') refreshDashboardActiveMatch();
   }
+  document.getElementById('receptionNav').addEventListener('click', (e) => {
+    const btn = e.target.closest('.receptionNavBtn');
+    if (!btn) return;
+    switchReceptionPage(btn.dataset.page);
+  });
 
   // Link-based visitors (umpire/view) never see the login screen or dashboard,
   // regardless of whether this browser happens to also be signed in as the club
@@ -882,14 +980,23 @@
     hideAdminDashboard();
     await initialiseApp();
   });
-  document.getElementById('dashboardNewBtn').addEventListener('click', async () => {
+  async function startNewGameFromReception(){
     hideAdminDashboard();
     await initialiseApp();
     document.getElementById('newGameBtn').click();
-  });
+  }
+  document.getElementById('dashboardNewBtn').addEventListener('click', startNewGameFromReception);
+  document.getElementById('matchesNewBtn').addEventListener('click', startNewGameFromReception);
+  function openHistoryFromReception(){
+    document.getElementById('historyModal').classList.add('show');
+    loadHistory();
+  }
+  document.getElementById('dashboardHistoryBtn').addEventListener('click', openHistoryFromReception);
+  document.getElementById('matchesHistoryBtn').addEventListener('click', openHistoryFromReception);
   document.getElementById('dashboardLogoutBtn').addEventListener('click', () => {
     fbAuth.signOut();
   });
+
 
   // ---- Retry-safe Firebase writes ----
   // A failed write (offline, dropped connection) is queued and retried — both on an
