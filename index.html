@@ -668,13 +668,15 @@
         <h2>Scheduled</h2>
         <button id="openScheduleBtn" class="ghostBtn" style="max-width:220px; display:block; margin-bottom:14px;">+ Schedule Match</button>
         <div class="receptionCardGrid" id="scheduledListWrap">
-          <div class="receptionCardEmpty">No matches scheduled.</div>
+          <div class="receptionCard"><div class="receptionCardEmpty">No matches scheduled.</div></div>
         </div>
       </div>
 
       <div class="receptionSection">
         <h2>Completed Today</h2>
-        <div id="dashboardCompletedWrap" class="receptionCardEmpty">Loading…</div>
+        <div class="receptionCardGrid" id="dashboardCompletedWrap">
+          <div class="receptionCard"><div class="receptionCardEmpty">Loading…</div></div>
+        </div>
       </div>
     </div>
 
@@ -1130,20 +1132,28 @@
     const d = new Date(ts);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
+  function emptyCard(msg){
+    const card = document.createElement('div');
+    card.className = 'receptionCard';
+    const empty = document.createElement('div');
+    empty.className = 'receptionCardEmpty';
+    empty.textContent = msg;
+    card.appendChild(empty);
+    return card;
+  }
   function refreshDashboardCompleted(){
     const wrap = document.getElementById('dashboardCompletedWrap');
-    wrap.textContent = 'Loading…';
+    wrap.innerHTML = ''; wrap.appendChild(emptyCard('Loading…'));
     fetch(DB_URL + '/history.json').then(r => r.json()).then((data) => {
-      if (!data){ wrap.textContent = 'No completed matches yet.'; return; }
+      if (!data){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('No completed matches yet.')); return; }
       const todayKey = dateKey(Date.now());
       const entries = Object.values(data)
         .filter(e => e.ts && dateKey(e.ts) === todayKey)
         .sort((a, b) => (b.ts || 0) - (a.ts || 0));
-      if (!entries.length){ wrap.textContent = 'No matches completed today.'; return; }
+      if (!entries.length){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('No matches completed today.')); return; }
       wrap.innerHTML = '';
-      wrap.className = '';
       entries.forEach(entry => wrap.appendChild(buildCompletedCard(entry)));
-    }).catch(() => { wrap.textContent = 'Couldn\'t load completed matches.'; });
+    }).catch(() => { wrap.innerHTML = ''; wrap.appendChild(emptyCard("Couldn't load completed matches.")); });
   }
   // ---- Courts ----
   function loadCourtsList(){
@@ -1259,11 +1269,11 @@
   // ---- Scheduled matches ----
   function refreshScheduledList(){
     const wrap = document.getElementById('scheduledListWrap');
-    wrap.textContent = 'Loading…';
+    wrap.innerHTML = ''; wrap.appendChild(emptyCard('Loading…'));
     fetch(DB_URL + '/scheduled.json').then(r => r.json()).then((data) => {
-      if (!data){ wrap.innerHTML = '<div class="receptionCardEmpty">No matches scheduled.</div>'; return; }
+      if (!data){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('No matches scheduled.')); return; }
       const entries = Object.entries(data).sort((a, b) => (a[1].startTime || 0) - (b[1].startTime || 0));
-      if (!entries.length){ wrap.innerHTML = '<div class="receptionCardEmpty">No matches scheduled.</div>'; return; }
+      if (!entries.length){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('No matches scheduled.')); return; }
       wrap.innerHTML = '';
       entries.forEach(([id, sched]) => {
         const card = document.createElement('div');
