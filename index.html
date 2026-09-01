@@ -260,6 +260,19 @@
     font-size:15px; padding:12px 14px; margin-bottom:12px; font-family:inherit;
   }
   #scheduleMatchModal select option{ background:#101E19; color:var(--net); }
+  #quickCourtPickerModal{
+    position:fixed; inset:0; z-index:210;
+    background:rgba(6,12,10,0.94);
+    display:none; align-items:center; justify-content:center;
+    padding: 20px 16px;
+  }
+  #quickCourtPickerModal.show{ display:flex; }
+  #quickCourtPickerModal select{
+    width:100%; box-sizing:border-box; background:rgba(242,239,230,0.08);
+    border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
+    font-size:15px; padding:12px 14px; font-family:inherit;
+  }
+  #quickCourtPickerModal select option{ background:#101E19; color:var(--net); }
   #scheduleDate, #scheduleTime{ display:inline-block; width:calc(50% - 5px); }
   #scheduleDate{ margin-right:10px; }
   #scheduleError{ color:#FF6B6B; font-size:13px; min-height:16px; margin-bottom:4px; }
@@ -765,11 +778,7 @@
       <div class="receptionSection">
         <h2>Active Games</h2>
         <div class="receptionCardGrid" id="dashboardActiveWrap">
-          <div class="receptionCard" id="dashboardActiveCard">
-            <div class="cardCourtBadge" id="dashboardActiveCourtBadge" style="display:none;">Court 1</div>
-            <div id="dashboardActiveMatch">Checking for a match in progress…</div>
-            <button id="dashboardOpenBtn" class="ghostBtn" style="display:none;">Open Current Match</button>
-          </div>
+          <div class="receptionCard"><div class="receptionCardEmpty">Checking for matches in progress…</div></div>
         </div>
       </div>
 
@@ -1087,6 +1096,19 @@
   </div>
 </div>
 
+<div id="quickCourtPickerModal">
+  <div class="panel">
+    <h2>Which court?</h2>
+    <div class="setupGroup">
+      <select id="quickCourtSelect"></select>
+    </div>
+    <div class="panelBtns">
+      <button id="quickCourtSkipBtn" class="ghostBtn">Skip</button>
+      <button id="quickCourtConfirmBtn">Continue</button>
+    </div>
+  </div>
+</div>
+
 <div id="scheduleMatchModal">
   <div class="panel">
     <h2 id="scheduleModalTitle">Schedule Match</h2>
@@ -1292,41 +1314,75 @@
     closeMobileSidebar('adminDashboard');
     switchReceptionPage('pageDashboard');
     refreshDashboardActiveMatch();
+    checkScheduledPromotions();
   }
   function hideAdminDashboard(){
     document.getElementById('adminDashboard').classList.remove('show');
   }
+  function buildActiveCard(courtName, matchIdForCard, s){
+    const card = document.createElement('div');
+    card.className = 'receptionCard';
+    const badge = document.createElement('div');
+    badge.className = 'cardCourtBadge';
+    badge.textContent = courtName || 'Court —';
+    card.appendChild(badge);
+    const names = document.createElement('div');
+    const namesText = (s.names && s.names.a && s.names.b) ? (s.names.a + ' vs ' + s.names.b) : 'Match in progress';
+    const scoreText = s.games ? (' — ' + s.games.a + '-' + s.games.b) : '';
+    names.textContent = namesText + scoreText;
+    card.appendChild(names);
+    if (typeof s.startTime === 'number' && s.startTime > 0 && s.startTime <= Date.now() + 60000){
+      const mins = Math.max(0, Math.round((Date.now() - s.startTime - (s.totalPausedMs || 0)) / 60000));
+      const startStr = new Date(s.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      const detail = document.createElement('div');
+      detail.className = 'cardDetail';
+      detail.textContent = mins + ' min played · started ' + startStr;
+      card.appendChild(detail);
+    }
+    const openBtn = document.createElement('button');
+    openBtn.className = 'ghostBtn';
+    openBtn.textContent = 'Open Match';
+    openBtn.addEventListener('click', () => openSpecificMatch(matchIdForCard));
+    card.appendChild(openBtn);
+    return card;
+  }
   function refreshDashboardActiveMatch(){
-    const box = document.getElementById('dashboardActiveMatch');
-    const badge = document.getElementById('dashboardActiveCourtBadge');
-    box.innerHTML = 'Checking for a match in progress…';
-    badge.style.display = 'none';
-    getCurrentActiveMatch().then((active) => {
-      if (active && active.state){
-        const s = active.state;
-        const names = (s.names && s.names.a && s.names.b) ? (s.names.a + ' vs ' + s.names.b) : 'Match in progress';
-        const score = s.games ? (' — ' + s.games.a + '-' + s.games.b) : '';
-        let detail = '';
-        if (typeof s.startTime === 'number' && s.startTime > 0 && s.startTime <= Date.now() + 60000){
-          const mins = Math.max(0, Math.round((Date.now() - s.startTime - (s.totalPausedMs || 0)) / 60000));
-          const startStr = new Date(s.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-          detail = '<div class="cardDetail">' + mins + ' min played &nbsp;·&nbsp; started ' + startStr + '</div>';
-        }
-        box.innerHTML = '<div>' + names + score + '</div>' + detail;
-        badge.style.display = '';
-        document.getElementById('dashboardOpenBtn').style.display = '';
-      } else {
-        box.textContent = 'No match currently in progress.';
-        document.getElementById('dashboardOpenBtn').style.display = 'none';
+    const wrap = document.getElementById('dashboardActiveWrap');
+    wrap.innerHTML = ''; wrap.appendChild(emptyCard('Checking for matches in progress…'));
+    (async () => {
+      const cards = [];
+      const seenMatchIds = new Set();
+      let courtsData = null;
+      try { courtsData = await fetch(DB_URL + '/courts.json').then(r => r.json()); } catch(err){ /* no courts configured yet */ }
+      const courts = courtsData ? Object.entries(courtsData) : [];
+      for (const [courtId, court] of courts){
+        const busyId = await courtBusyMatchId(courtId);
+        if (!busyId) continue;
+        try {
+          const s = await fetch(DB_URL + '/matches/' + busyId + '/state.json').then(r => r.json());
+          if (s && s.matchStarted && !s.matchOver){
+            cards.push(buildActiveCard(court.name || 'Court', busyId, s));
+            seenMatchIds.add(busyId);
+          }
+        } catch(err){ /* skip this court on a fetch failure */ }
       }
-    });
+      // Fall back to the legacy single global pointer too, in case a match is
+      // active without ever having been assigned to a specific court.
+      const legacyActive = await getCurrentActiveMatch();
+      if (legacyActive && legacyActive.id && legacyActive.state && !seenMatchIds.has(legacyActive.id)){
+        cards.push(buildActiveCard(legacyActive.state.courtName || 'Court —', legacyActive.id, legacyActive.state));
+      }
+      wrap.innerHTML = '';
+      if (!cards.length){ wrap.appendChild(emptyCard('No match currently in progress.')); return; }
+      cards.forEach(c => wrap.appendChild(c));
+    })();
   }
   function buildCompletedCard(entry){
     const row = document.createElement('div');
     row.className = 'receptionCard completedRow';
     const badge = document.createElement('div');
     badge.className = 'cardCourtBadge';
-    badge.textContent = 'Court 1';
+    badge.textContent = entry.courtName || 'Court —';
     row.appendChild(badge);
     const top = document.createElement('div');
     top.className = 'completedTop';
@@ -1592,12 +1648,12 @@
   document.getElementById('exportCsvBtn').addEventListener('click', () => {
     fetch(DB_URL + '/history.json').then(r => r.json()).then((data) => {
       const entries = data ? Object.values(data).sort((a, b) => (b.ts || 0) - (a.ts || 0)) : [];
-      const header = ['Date', 'Time', 'Team A', 'Team B', 'Sets A', 'Sets B', 'Winner', 'Duration (min)'];
+      const header = ['Date', 'Time', 'Court', 'Team A', 'Team B', 'Sets A', 'Sets B', 'Winner', 'Duration (min)'];
       const rows = entries.map(e => {
         const d = e.ts ? new Date(e.ts) : null;
         const winnerName = e.winner === 'a' ? e.teamA : (e.winner === 'b' ? e.teamB : 'Tie');
         return [
-          d ? d.toLocaleDateString() : '', d ? d.toLocaleTimeString() : '',
+          d ? d.toLocaleDateString() : '', d ? d.toLocaleTimeString() : '', e.courtName || '',
           e.teamA || '', e.teamB || '', e.setsA || 0, e.setsB || 0,
           winnerName || '', e.durationMins != null ? e.durationMins : ''
         ];
@@ -1614,6 +1670,64 @@
       URL.revokeObjectURL(url);
     }).catch(() => { alert("Couldn't load match history to export."); });
   });
+
+  // ---- Per-court active-match tracking ----
+  // A court counts as busy only if its pointer actually resolves to a match that
+  // is genuinely still in progress — the same "verify, don't just trust the
+  // pointer" pattern the single-match architecture already uses for
+  // /activeMatchId, so a court can never get permanently stuck "busy" just
+  // because a pointer wasn't cleared somewhere.
+  async function courtBusyMatchId(courtId){
+    try {
+      const activeId = await (await fetchWithTimeout(DB_URL + '/courts/' + courtId + '/activeMatchId.json', 4000)).json();
+      if (!activeId) return null;
+      const s = await (await fetchWithTimeout(DB_URL + '/matches/' + activeId + '/state.json', 4000)).json();
+      return (s && s.matchStarted && !s.matchOver) ? activeId : null;
+    } catch(err){ return null; }
+  }
+  async function promoteScheduledMatch(schedId, sched){
+    const newId = genId();
+    const fresh = PadelEngine.createInitialState();
+    fresh.names = {a: sched.teamA || 'TEAM A', b: sched.teamB || 'TEAM B'};
+    fresh.matchStarted = true;
+    fresh.startTime = Date.now();
+    fresh.setStartTime = Date.now();
+    fresh.courtId = sched.courtId;
+    fresh.courtName = sched.courtName;
+    fresh.rev = Date.now();
+    try {
+      await fetch(DB_URL + '/matches/' + newId + '/state.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(fresh)
+      });
+      await fetch(DB_URL + '/courts/' + sched.courtId + '/activeMatchId.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(newId)
+      });
+      // Only remove the booking once the match genuinely exists — a failed write
+      // above leaves the scheduled entry in place to try again next check.
+      firebaseDelete('/scheduled/' + schedId + '.json');
+    } catch(err){ /* try again on the next periodic check */ }
+  }
+  async function checkScheduledPromotions(){
+    try {
+      const data = await fetch(DB_URL + '/scheduled.json').then(r => r.json());
+      if (!data) return;
+      const now = Date.now();
+      let promoted = false;
+      for (const [schedId, sched] of Object.entries(data)){
+        if (!sched.startTime || sched.startTime > now) continue;
+        if (!sched.courtId) continue; // nothing to check court-availability against
+        const busyWith = await courtBusyMatchId(sched.courtId);
+        if (busyWith) continue; // court's still finishing its previous match
+        await promoteScheduledMatch(schedId, sched);
+        promoted = true;
+      }
+      if (promoted){
+        refreshDashboardActiveMatch();
+        refreshScheduledList();
+      }
+    } catch(err){ /* try again on the next periodic check */ }
+  }
+  setInterval(checkScheduledPromotions, 30000);
 
   // ---- Scheduled matches ----
   function refreshScheduledList(){
@@ -1784,19 +1898,69 @@
   document.getElementById('loginPassword').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('loginSubmitBtn').click();
   });
-  document.getElementById('dashboardOpenBtn').addEventListener('click', async () => {
+  async function openSpecificMatch(specificMatchId){
     hideAdminDashboard();
-    await initialiseApp();
+    matchId = specificMatchId;
+    setMatchIdInURL(matchId);
+    try {
+      const remoteState = await (await fetchWithTimeout(DB_URL + '/matches/' + matchId + '/state.json', 4000)).json();
+      if (remoteState){
+        const voiceOn = state.voiceOn;
+        state = Object.assign(freshState(), remoteState);
+        state.voiceOn = voiceOn;
+        if (typeof remoteState.rev === 'number') lastKnownRev = remoteState.rev;
+      }
+    } catch(err){ /* fall through with whatever local state already has */ }
+    umpireToken = null;
+    ensureUmpireToken();
+    subscribeToMatch();
+    subscribeToActiveMatch();
+    render(null);
+    updateTimer();
     showAdminMatchConsole();
-  });
+  }
   async function startNewGameFromReception(){
     hideAdminDashboard();
     await initialiseApp();
     showAdminMatchConsole();
-    document.getElementById('newGameBtn').click();
+    openQuickCourtPicker();
   }
   document.getElementById('dashboardNewBtn').addEventListener('click', startNewGameFromReception);
   document.getElementById('matchesNewBtn').addEventListener('click', startNewGameFromReception);
+
+  // ---- Quick court picker (shown before Start New Game opens the setup wizard) ----
+  let pendingCourtId = null, pendingCourtName = null;
+  function openQuickCourtPicker(){
+    const sel = document.getElementById('quickCourtSelect');
+    sel.innerHTML = '<option value="">Loading courts…</option>';
+    fetch(DB_URL + '/courts.json').then(r => r.json()).then((data) => {
+      sel.innerHTML = '';
+      if (!data){
+        sel.innerHTML = '<option value="">No courts set up yet</option>';
+        return;
+      }
+      Object.entries(data).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0)).forEach(([id, court]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = court.name || 'Unnamed court';
+        sel.appendChild(opt);
+      });
+    }).catch(() => { sel.innerHTML = '<option value="">Couldn\'t load courts</option>'; });
+    document.getElementById('quickCourtPickerModal').classList.add('show');
+  }
+  document.getElementById('quickCourtConfirmBtn').addEventListener('click', () => {
+    const sel = document.getElementById('quickCourtSelect');
+    pendingCourtId = sel.value || null;
+    pendingCourtName = (pendingCourtId && sel.options[sel.selectedIndex]) ? sel.options[sel.selectedIndex].textContent : null;
+    document.getElementById('quickCourtPickerModal').classList.remove('show');
+    document.getElementById('newGameBtn').click();
+  });
+  document.getElementById('quickCourtSkipBtn').addEventListener('click', () => {
+    pendingCourtId = null;
+    pendingCourtName = null;
+    document.getElementById('quickCourtPickerModal').classList.remove('show');
+    document.getElementById('newGameBtn').click();
+  });
 
   // ---- Admin Match Console ----
   // Admin never sees the real fullscreen scoreboard directly — instead a compact
@@ -1807,6 +1971,7 @@
     const card = document.getElementById('consolePreviewCard');
     if (!card) return;
     document.getElementById('consolePreviewTeams').textContent = (state.names.a || 'TEAM A') + ' vs ' + (state.names.b || 'TEAM B');
+    document.getElementById('consoleCourtBadge').textContent = state.courtName || 'Court —';
     document.getElementById('consolePreviewScore').textContent = displayPts('a') + '  –  ' + displayPts('b');
     const cols = buildMiniColumns();
     document.getElementById('consolePreviewMini').textContent = 'Sets: ' + cols.map(c => c.a + '-' + c.b).join('  ');
@@ -1832,7 +1997,7 @@
   document.getElementById('consolePauseBtn').addEventListener('click', () => { togglePause(); });
   document.getElementById('consoleNewGameBtn').addEventListener('click', () => {
     closeMobileSidebar('adminMatchConsole');
-    document.getElementById('newGameBtn').click();
+    openQuickCourtPicker();
   });
   document.getElementById('consoleResetBtn').addEventListener('click', () => {
     closeMobileSidebar('adminMatchConsole');
@@ -1947,6 +2112,16 @@
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(matchId)
     }).catch(() => { /* not queued — the next valid local mutation will write it again */ });
+    // Same reasoning for the per-court pointer, which is what lets the dashboard
+    // know a specific court is busy and lets scheduled matches on OTHER courts
+    // promote themselves without waiting on this one.
+    if (state.courtId){
+      fetch(DB_URL + '/courts/' + state.courtId + '/activeMatchId.json', {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(matchId)
+      }).catch(() => { /* not queued — the next valid local mutation will write it again */ });
+    }
   }
 
   const VOICE_PREF_KEY = 'padelVoicePref';
@@ -2253,7 +2428,9 @@
         setsA: state.sets.a,
         setsB: state.sets.b,
         setHistory: state.setHistory,
-        durationMins: Math.max(0, Math.round(elapsedMatchMs() / 60000))
+        durationMins: Math.max(0, Math.round(elapsedMatchMs() / 60000)),
+        courtId: state.courtId || null,
+        courtName: state.courtName || null
       };
       firebasePut('/history/' + matchId + '.json', record);
     } catch(err){ /* ignore */ }
@@ -2485,7 +2662,8 @@
     const names = state.names, bestOf = state.setsToWin, players = state.players,
           servingActive = state.servingActive, initialServerIndex = state.initialServerIndex,
           voiceOn = state.voiceOn, serveOrder = state.serveOrder,
-          initialTeamAOnLeft = state.initialTeamAOnLeft !== false;
+          initialTeamAOnLeft = state.initialTeamAOnLeft !== false,
+          courtId = state.courtId, courtName = state.courtName;
     state = freshState();
     state.names = names; state.setsToWin = bestOf;
     state.players = players; state.servingActive = servingActive;
@@ -2493,6 +2671,7 @@
     state.voiceOn = voiceOn; state.serveOrder = serveOrder;
     state.teamAOnLeft = initialTeamAOnLeft;
     state.initialTeamAOnLeft = initialTeamAOnLeft;
+    state.courtId = courtId; state.courtName = courtName;
     state.matchStarted = true;
     history = [];
     overlayDismissed = false;
@@ -3092,6 +3271,9 @@
     state.startTime = now;
     state.setStartTime = now;
     state.matchStarted = true;
+    state.courtId = pendingCourtId;
+    state.courtName = pendingCourtName;
+    pendingCourtId = null; pendingCourtName = null;
     rotateMatchId();
     markDirty();
     el.playerSetup.classList.remove('show');
@@ -3159,6 +3341,9 @@
     state.startTime = now;
     state.setStartTime = now;
     state.matchStarted = true;
+    state.courtId = pendingCourtId;
+    state.courtName = pendingCourtName;
+    pendingCourtId = null; pendingCourtName = null;
     rotateMatchId();
     markDirty();
     el.playerSetup.classList.remove('show');
