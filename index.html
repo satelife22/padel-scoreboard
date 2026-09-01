@@ -389,13 +389,13 @@
   #loginScreen .panel{ background:var(--brand); border-color:rgba(255,255,255,0.15); }
 
   #adminDashboard{
-    position:fixed; inset:0; z-index:190;
+    position:fixed; inset:0; z-index:10;
     background:var(--bg); color:var(--net);
     display:none;
   }
   #adminDashboard.show{ display:flex; }
   #adminMatchConsole{
-    position:fixed; inset:0; z-index:190;
+    position:fixed; inset:0; z-index:10;
     background:var(--bg); color:var(--net);
     display:none;
   }
@@ -1830,10 +1830,20 @@
   });
   document.getElementById('consoleUndoBtn').addEventListener('click', () => { undoRemote(); });
   document.getElementById('consolePauseBtn').addEventListener('click', () => { togglePause(); });
-  document.getElementById('consoleNewGameBtn').addEventListener('click', () => { document.getElementById('newGameBtn').click(); });
-  document.getElementById('consoleResetBtn').addEventListener('click', () => { document.getElementById('resetMatch').click(); });
-  document.getElementById('consoleEndGameBtn').addEventListener('click', () => { document.getElementById('endGameBtn').click(); });
+  document.getElementById('consoleNewGameBtn').addEventListener('click', () => {
+    closeMobileSidebar('adminMatchConsole');
+    document.getElementById('newGameBtn').click();
+  });
+  document.getElementById('consoleResetBtn').addEventListener('click', () => {
+    closeMobileSidebar('adminMatchConsole');
+    document.getElementById('resetMatch').click();
+  });
+  document.getElementById('consoleEndGameBtn').addEventListener('click', () => {
+    closeMobileSidebar('adminMatchConsole');
+    document.getElementById('endGameBtn').click();
+  });
   document.getElementById('consoleHistoryBtn').addEventListener('click', () => {
+    closeMobileSidebar('adminMatchConsole');
     document.getElementById('historyModal').classList.add('show');
     loadHistory();
   });
