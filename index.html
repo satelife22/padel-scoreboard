@@ -404,6 +404,7 @@
     width:320px; flex-shrink:0; box-sizing:border-box;
     background:rgba(0,0,0,0.25); border-right:1px solid rgba(242,239,230,0.1);
     display:flex; flex-direction:column; gap:16px; overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
     padding: max(20px, env(safe-area-inset-top)) 18px 18px;
   }
   .consoleControls .receptionCard{ gap:8px; }
@@ -429,7 +430,8 @@
   .receptionSidebar{
     width:220px; flex-shrink:0; box-sizing:border-box;
     background:rgba(0,0,0,0.25); border-right:1px solid rgba(242,239,230,0.1);
-    display:flex; flex-direction:column;
+    display:flex; flex-direction:column; overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
     padding: max(24px, env(safe-area-inset-top)) 18px 18px;
   }
   .sidebarToggleBtn{ display:none; }
@@ -1732,11 +1734,13 @@
     const panel = document.getElementById(panelId);
     panel.querySelector('.appSidebar').classList.add('mobile-open');
     panel.querySelector('.sidebarBackdrop').classList.add('show');
+    panel.querySelector('.sidebarToggleBtn').style.display = 'none';
   }
   function closeMobileSidebar(panelId){
     const panel = document.getElementById(panelId);
     panel.querySelector('.appSidebar').classList.remove('mobile-open');
     panel.querySelector('.sidebarBackdrop').classList.remove('show');
+    panel.querySelector('.sidebarToggleBtn').style.display = '';
   }
   document.getElementById('dashboardSidebarToggle').addEventListener('click', () => openMobileSidebar('adminDashboard'));
   document.getElementById('dashboardSidebarBackdrop').addEventListener('click', () => closeMobileSidebar('adminDashboard'));
