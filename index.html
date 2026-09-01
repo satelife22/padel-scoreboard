@@ -316,6 +316,36 @@
   #quickStartBtn{ background:rgba(242,239,230,0.1) !important; color:var(--net) !important; }
   #setupNewGameBtn{ background:var(--net); color:#101816; }
 
+  /* Club login — reception/admin only. Umpire and view-only links never show this. */
+  #loginScreen{
+    position:fixed; inset:0; z-index:200;
+    background:rgba(6,12,10,0.97);
+    display:none; align-items:center; justify-content:center;
+    padding: 20px 16px;
+  }
+  #loginScreen.show{ display:flex; }
+  #loginScreen p{ margin:0 0 20px; font-size:14px; line-height:1.4; opacity:.7; }
+  #loginScreen input{
+    width:100%; box-sizing:border-box; background:rgba(242,239,230,0.08);
+    border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
+    font-size:16px; padding:14px; margin-bottom:12px; font-family:inherit;
+  }
+  #loginError{
+    color:#FF6B6B; font-size:14px; min-height:18px; margin-bottom:4px;
+  }
+  #loginSubmitBtn{ background:var(--net); color:#101816; width:100%; }
+
+  /* Role-based access. Default (logged out, no link params) = nothing usable. */
+  body.role-view #undoBtn,
+  body.role-view #settingsBtn{ display:none; }
+  body.role-view #timerBar{ pointer-events:none; }
+  body:not(.role-admin) #newGameBtn,
+  body:not(.role-admin) #resetMatch,
+  body:not(.role-admin) #endGameBtn,
+  body:not(.role-admin) .shareBlock,
+  body:not(.role-admin) #logoutBtn{ display:none; }
+  #logoutBtn{ background:rgba(255,107,107,0.15) !important; color:#FF6B6B !important; }
+
   /* Settings panel */
   #settings{
     position:fixed; inset:0; z-index:60;
@@ -441,6 +471,19 @@
 </head>
 <body>
 
+<div id="loginScreen">
+  <div class="panel">
+    <h2>Club Login</h2>
+    <p>Reception/admin access — umpires and spectators use their own link and never see this screen.</p>
+    <input type="email" id="loginEmail" placeholder="Email" autocomplete="username" />
+    <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" />
+    <div id="loginError"></div>
+    <div class="panelBtns">
+      <button id="loginSubmitBtn">Log In</button>
+    </div>
+  </div>
+</div>
+
 <div id="app">
   <div class="half a" id="halfA">
     <div class="teamRow">
@@ -518,10 +561,16 @@
       </div>
     </div>
     <div class="shareBlock">
-      <div class="setupLabel">Share this scoreboard</div>
+      <div class="setupLabel">Share this scoreboard — umpire (full control)</div>
       <img id="qrImg" alt="Scan to open this scoreboard" />
       <div id="shareUrlText"></div>
-      <button id="copyLinkBtn" class="ghostBtn">Copy Link</button>
+      <button id="copyLinkBtn" class="ghostBtn">Copy Umpire Link</button>
+    </div>
+    <div class="shareBlock">
+      <div class="setupLabel">Spectator / courtside display (view only)</div>
+      <img id="viewQrImg" alt="Scan to view this scoreboard" />
+      <div id="viewUrlText"></div>
+      <button id="copyViewLinkBtn" class="ghostBtn">Copy View-Only Link</button>
     </div>
     <div class="panelBtns">
       <button id="newGameBtn" class="ghostBtn">Start New Game</button>
@@ -532,6 +581,7 @@
       <button id="endGameBtn" class="dangerBtn">End Game</button>
     </div>
     <div class="panelBtns">
+      <button id="logoutBtn" class="ghostBtn">Log Out</button>
       <button id="closeSettings">Done</button>
     </div>
   </div>
@@ -646,7 +696,25 @@
 </div>
 
 
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="padel-engine.js"></script>
+<script>
+  // ---- Club login (Firebase Auth) ----
+  // One shared login for the club/reception device. Umpire and spectator links
+  // never see this — they carry their own access via URL (a per-match token for
+  // the umpire, or a plain read-only flag for spectators/the courtside iPad).
+  firebase.initializeApp({
+    apiKey: "AIzaSyAG7Th_4-0OtpZjGPraVT4bfAZAARui4QU",
+    authDomain: "padel-scoreboard-8f11c.firebaseapp.com",
+    databaseURL: "https://padel-scoreboard-8f11c-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "padel-scoreboard-8f11c",
+    storageBucket: "padel-scoreboard-8f11c.firebasestorage.app",
+    messagingSenderId: "771441191281",
+    appId: "1:771441191281:web:17f922eeb7296eeff12ed0"
+  });
+  const fbAuth = firebase.auth();
+</script>
 <script>
 (function(){
   const SEQ = PadelEngine.SEQ;
@@ -693,6 +761,59 @@
   const initialMatchIdFromURL = getMatchIdFromURL();
   let matchId = initialMatchIdFromURL || genId();
   setMatchIdInURL(matchId);
+
+  // ---- Access role ----
+  // 'admin'  = logged-in club/reception device — can set up matches, generate
+  //            links, and do structural stuff (new game, reset, end game).
+  // 'umpire' = opened via a match's umpire link (?t=<token>) — can score, undo,
+  //            pause, but not touch match setup.
+  // 'view'   = opened via ?view=1 — read-only, e.g. the courtside iPad.
+  // null     = plain visit with no link params and not logged in — locked out
+  //            behind the login screen until the club signs in.
+  const urlParams = new URLSearchParams(location.search);
+  const isViewOnlyLink = urlParams.get('view') === '1';
+  const umpireTokenFromURL = urlParams.get('t') || null;
+  let appRole = isViewOnlyLink ? 'view' : (umpireTokenFromURL ? 'umpire' : null);
+
+  function applyRoleClasses(){
+    document.body.classList.remove('role-admin', 'role-umpire', 'role-view');
+    if (appRole) document.body.classList.add('role-' + appRole);
+  }
+  function canControl(){ return appRole === 'admin' || appRole === 'umpire'; }
+  function canAdmin(){ return appRole === 'admin'; }
+
+  function showLoginScreen(msg){
+    document.getElementById('loginScreen').classList.add('show');
+    document.getElementById('loginError').textContent = msg || '';
+  }
+  function hideLoginScreen(){
+    document.getElementById('loginScreen').classList.remove('show');
+  }
+
+  // Link-based visitors (umpire/view) never see the login screen, regardless of
+  // whether this browser happens to also be signed in as the club elsewhere.
+  if (!isViewOnlyLink && !umpireTokenFromURL){
+    fbAuth.onAuthStateChanged(function(user){
+      appRole = user ? 'admin' : null;
+      applyRoleClasses();
+      if (user) hideLoginScreen(); else showLoginScreen();
+    });
+  } else {
+    applyRoleClasses();
+  }
+
+  document.getElementById('loginSubmitBtn').addEventListener('click', () => {
+    const email = document.getElementById('loginEmail').value.trim();
+    const pw = document.getElementById('loginPassword').value;
+    if (!email || !pw){ showLoginScreen('Enter both email and password.'); return; }
+    document.getElementById('loginError').textContent = '';
+    fbAuth.signInWithEmailAndPassword(email, pw).catch((err) => {
+      showLoginScreen(err && err.message ? err.message : 'Login failed.');
+    });
+  });
+  document.getElementById('loginPassword').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('loginSubmitBtn').click();
+  });
 
   // ---- Retry-safe Firebase writes ----
   // A failed write (offline, dropped connection) is queued and retried — both on an
@@ -1200,6 +1321,7 @@
 
   function addPoint(team, opts){
     opts = opts || {};
+    if (!canControl()) return;
     if (state.matchOver) return;
     if (state.paused) return;
     markDirty();
@@ -1290,6 +1412,7 @@
   }
 
   function undoRemote(){
+    if (!canControl()) return;
     const stack = Array.isArray(state.undoStack) ? state.undoStack : [];
     if (!stack.length) return;
     closeMiniExpand();
@@ -1317,6 +1440,7 @@
 
 
   function resetMatch(){
+    if (!canAdmin()) return;
     closeMiniExpand();
     const names = state.names, bestOf = state.setsToWin, players = state.players,
           servingActive = state.servingActive, initialServerIndex = state.initialServerIndex,
@@ -1507,6 +1631,7 @@
   }
 
   function togglePause(){
+    if (!canControl()) return;
     if (!state.matchStarted || state.matchOver) return;
     const now = Date.now();
     if (!state.paused){
@@ -1655,6 +1780,11 @@
   document.getElementById('closeSettings').addEventListener('click', (e) => {
     e.stopPropagation(); el.settings.classList.remove('show');
   });
+  document.getElementById('logoutBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    fbAuth.signOut();
+    el.settings.classList.remove('show');
+  });
   document.getElementById('resetMatch').addEventListener('click', (e) => {
     e.stopPropagation();
     document.getElementById('confirmModal').classList.add('show');
@@ -1744,35 +1874,64 @@
   updateVoiceSetUI();
 
   // Share block: QR code + copy link, based on wherever this page is actually hosted
-  function shareUrlFor(id){ return 'https://satelife22.github.io/padel-scoreboard/?m=' + id; }
-  let shareUrl = shareUrlFor(matchId);
+  // The umpire link carries a per-match token so it can score/undo/pause without
+  // logging in — a fresh, random token is generated (and stored in Firebase) for
+  // every new match; anyone who only has the plain matchId can't guess it.
+  let umpireToken = null;
+  function shareUrlFor(id, token){ return 'https://satelife22.github.io/padel-scoreboard/?m=' + id + (token ? '&t=' + token : ''); }
+  function viewUrlFor(id){ return 'https://satelife22.github.io/padel-scoreboard/?m=' + id + '&view=1'; }
+  let shareUrl = shareUrlFor(matchId, umpireToken);
+  let viewUrl = viewUrlFor(matchId);
   function updateShareLink(){
-    shareUrl = shareUrlFor(matchId);
+    shareUrl = shareUrlFor(matchId, umpireToken);
+    viewUrl = viewUrlFor(matchId);
     document.getElementById('shareUrlText').textContent = shareUrl;
     document.getElementById('qrImg').src =
       'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(shareUrl);
+    document.getElementById('viewUrlText').textContent = viewUrl;
+    document.getElementById('viewQrImg').src =
+      'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(viewUrl);
   }
-  updateShareLink();
-  document.getElementById('copyLinkBtn').addEventListener('click', (e) => {
-    e.stopPropagation();
-    const btn = e.currentTarget;
+  // Reuses an existing match's token if one's already stored (e.g. reception
+  // reopening a match link), otherwise mints and stores a fresh one.
+  function ensureUmpireToken(){
+    if (umpireToken){ updateShareLink(); return; }
+    fetchWithTimeout(DB_URL + '/matches/' + matchId + '/umpireToken.json', 4000)
+      .then(r => r.json())
+      .then(tok => {
+        if (tok){ umpireToken = tok; }
+        else { umpireToken = genId(); firebasePut('/matches/' + matchId + '/umpireToken.json', umpireToken); }
+        updateShareLink();
+      })
+      .catch(() => { updateShareLink(); });
+  }
+  ensureUmpireToken();
+  function copyToClipboard(text, btn){
     const done = () => { const old = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = old; }, 1500); };
     const fallbackCopy = () => {
       try {
         const ta = document.createElement('textarea');
-        ta.value = shareUrl;
+        ta.value = text;
         ta.style.position = 'fixed'; ta.style.opacity = '0';
         document.body.appendChild(ta); ta.focus(); ta.select();
         const ok = document.execCommand('copy');
         document.body.removeChild(ta);
-        if (ok) done(); else btn.textContent = shareUrl;
-      } catch(err){ btn.textContent = shareUrl; }
+        if (ok) done(); else btn.textContent = text;
+      } catch(err){ btn.textContent = text; }
     };
     if (navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(shareUrl).then(done).catch(fallbackCopy);
+      navigator.clipboard.writeText(text).then(done).catch(fallbackCopy);
     } else {
       fallbackCopy();
     }
+  }
+  document.getElementById('copyLinkBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyToClipboard(shareUrl, e.currentTarget);
+  });
+  document.getElementById('copyViewLinkBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    copyToClipboard(viewUrl, e.currentTarget);
   });
 
   el.bestOfBtns.addEventListener('click', (e) => {
@@ -1848,6 +2007,7 @@
   }
 
   function finishSetup(first, second, teamAOnLeft){
+    if (!canAdmin()) return;
     state.players.a = setupNames.a;
     state.players.b = setupNames.b;
     // Slot 0/1 = the two chosen first servers; slot 2/3 = each team's other player, continuing the rotation.
@@ -1922,6 +2082,7 @@
   });
 
   function finishSkipSetup(teamAOnLeft){
+    if (!canAdmin()) return;
     state.servingActive = false;
     state.players = {a:['',''], b:['','']};
     state.teamAOnLeft = teamAOnLeft;
@@ -2035,6 +2196,7 @@
     markDirty();
   }
   function startNewGameFlow(){
+    if (!canAdmin()) return;
     closeMiniExpand();
     const voiceOn = state.voiceOn, setsToWin = state.setsToWin;
     state = freshState();
@@ -2054,6 +2216,7 @@
     openPlayerSetup();
   }
   function endGameNow(){
+    if (!canAdmin()) return;
     if (state.matchOver) return; // already finished naturally
     let winner;
     if (state.sets.a !== state.sets.b) winner = state.sets.a > state.sets.b ? 'a' : 'b';
@@ -2186,7 +2349,8 @@
     matchId = genId();
     setMatchIdInURL(matchId);
     lastKnownRev = 0;
-    updateShareLink();
+    umpireToken = null; // this is a brand-new match — never reuse the old one's token
+    ensureUmpireToken();
     subscribeToMatch();
   }
 
