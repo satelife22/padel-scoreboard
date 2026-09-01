@@ -11,6 +11,7 @@
 <style>
   :root{
     --bg:#0A1612;
+    --brand:#8B3916;
     --teamA:#D7E85B;
     --teamA-ink:#16210C;
     --teamB:#1C6FEB;
@@ -385,7 +386,7 @@
   #loginScreen.show{ display:flex; }
   #loginLogo{ display:block; width:100%; max-width:280px; margin:0 auto 8px; }
   #loginScreen h2{ text-align:center; margin:0 0 24px; }
-  #loginScreen .panel{ background:#8B3916; border-color:rgba(255,255,255,0.15); }
+  #loginScreen .panel{ background:var(--brand); border-color:rgba(255,255,255,0.15); }
 
   #adminDashboard{
     position:fixed; inset:0; z-index:190;
@@ -439,7 +440,7 @@
     font-weight:600; cursor:pointer; letter-spacing:.01em;
   }
   .receptionNavBtn:hover{ background:rgba(242,239,230,0.06); color:var(--net); }
-  .receptionNavBtn.active{ background:#8B3916; color:#FFF6EC; }
+  .receptionNavBtn.active{ background:var(--brand); color:#FFF6EC; }
   #dashboardLogoutBtn{
     background:rgba(255,107,107,0.12); color:#FF6B6B; border:none;
     border-radius:10px; padding:12px 14px; font-family:inherit; font-size:14px;
@@ -461,7 +462,7 @@
   }
   .cardCourtBadge{
     position:absolute; top:16px; right:18px;
-    font-size:13px; font-weight:800; letter-spacing:.03em; color:#8B3916;
+    font-size:13px; font-weight:800; letter-spacing:.03em; color:var(--brand);
   }
   .receptionCardLabel{ font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; opacity:.55; }
   .receptionCardEmpty{ font-size:14px; opacity:.5; }
@@ -498,6 +499,28 @@
     opacity:.55; margin:0 0 12px;
   }
   .courtAddRow{ display:flex; gap:10px; max-width:480px; margin-top:16px; }
+  input[type="color"]{
+    width:100%; height:44px; border:1px solid rgba(242,239,230,0.2); border-radius:10px;
+    background:transparent; cursor:pointer; padding:2px;
+  }
+  #brandingLogoFile{ color:var(--net); font-size:13px; }
+  #newAdminEmail, #newAdminPassword{
+    width:100%; box-sizing:border-box; background:rgba(242,239,230,0.08);
+    border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
+    font-size:15px; padding:12px 14px; margin-bottom:12px; font-family:inherit;
+  }
+  #addAdminError{ color:#FF6B6B; font-size:13px; min-height:16px; margin-bottom:4px; }
+  #addAdminBtn{
+    width:100%; padding:12px; border-radius:10px; border:none; cursor:pointer;
+    background:var(--net); color:#101816;
+    font-family:'Barlow Condensed', sans-serif; font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:14px;
+  }
+  #brandingError{ color:#FF6B6B; font-size:13px; min-height:16px; margin:8px 0 4px; }
+  #saveBrandingBtn{
+    width:100%; padding:12px; border-radius:10px; border:none; cursor:pointer; margin-top:6px;
+    background:var(--net); color:#101816;
+    font-family:'Barlow Condensed', sans-serif; font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:14px;
+  }
   .courtAddRow input{
     flex:1; box-sizing:border-box; background:rgba(242,239,230,0.08);
     border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
@@ -733,7 +756,8 @@
     <div class="receptionPage" id="pageMatches">
       <h1>Matches</h1>
       <button id="matchesNewBtn">Start New Game</button>
-      <button id="openScheduleBtn" class="ghostBtn" style="max-width:220px; display:block; margin-bottom:20px;">+ Schedule Match</button>
+      <button id="openScheduleBtn" class="ghostBtn" style="max-width:220px; display:block; margin-bottom:8px;">+ Schedule Match</button>
+      <button id="exportCsvBtn" class="ghostBtn" style="max-width:220px; display:block; margin-bottom:20px;">Export History (CSV)</button>
 
       <div class="receptionSection">
         <h2>Search by Date</h2>
@@ -748,6 +772,53 @@
 
     <div class="receptionPage" id="pageSettings">
       <h1>Settings</h1>
+
+      <div class="receptionSection">
+        <h2>Branding &amp; Colours</h2>
+        <div class="receptionCard" style="max-width:420px;">
+          <div class="setupGroup">
+            <div class="setupLabel">Logo</div>
+            <img id="brandingLogoPreview" src="images/recess-logo-transparent.png" style="max-width:180px; display:block; margin-bottom:10px;" />
+            <input type="file" id="brandingLogoFile" accept="image/*" />
+          </div>
+          <div class="setupGroup">
+            <div class="setupLabel">Brand colour</div>
+            <input type="color" id="brandingBrandColor" value="#8B3916" />
+          </div>
+          <div class="setupGroup">
+            <div class="setupLabel">Team A colour</div>
+            <input type="color" id="brandingTeamAColor" value="#D7E85B" />
+          </div>
+          <div class="setupGroup">
+            <div class="setupLabel">Team B colour</div>
+            <input type="color" id="brandingTeamBColor" value="#1C6FEB" />
+          </div>
+          <div id="brandingError"></div>
+          <button id="saveBrandingBtn">Save Branding</button>
+        </div>
+      </div>
+
+      <div class="receptionSection">
+        <h2>Default Match Format</h2>
+        <div class="receptionCard" style="max-width:420px;">
+          <div class="segBtns" id="defaultFormatBtns">
+            <button data-v="1">Best of 1</button>
+            <button data-v="2" class="active">Best of 3</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="receptionSection">
+        <h2>Admin Logins</h2>
+        <div class="receptionCard" style="max-width:420px;">
+          <input type="email" id="newAdminEmail" placeholder="New admin email" />
+          <input type="password" id="newAdminPassword" placeholder="Password (min 6 characters)" />
+          <div id="addAdminError"></div>
+          <button id="addAdminBtn">Add Admin Login</button>
+        </div>
+        <p class="receptionNote">Anyone with these details gets full reception access. There's currently no way to list or remove logins from here — for that, use the Firebase console (Authentication → Users).</p>
+      </div>
+
       <div class="receptionSection">
         <h2>Courts</h2>
         <div id="courtsListWrap">Loading…</div>
@@ -1108,6 +1179,29 @@
 
   const DB_URL = 'https://padel-scoreboard-8f11c-default-rtdb.asia-southeast1.firebasedatabase.app';
 
+  // ---- Club branding ----
+  // Applies to everyone (login screen, dashboard, and the live scoreboard itself),
+  // so it's fetched immediately at boot rather than gated behind any role.
+  function applyBranding(b){
+    if (!b) return;
+    if (b.brandColor) document.documentElement.style.setProperty('--brand', b.brandColor);
+    if (b.teamAColor) document.documentElement.style.setProperty('--teamA', b.teamAColor);
+    if (b.teamBColor) document.documentElement.style.setProperty('--teamB', b.teamBColor);
+    if (b.logoDataUrl){
+      const loginLogo = document.getElementById('loginLogo');
+      const dashLogo = document.getElementById('dashboardLogo');
+      if (loginLogo) loginLogo.src = b.logoDataUrl;
+      if (dashLogo) dashLogo.src = b.logoDataUrl;
+    }
+  }
+  fetch(DB_URL + '/branding.json').then(r => r.json()).then(applyBranding).catch(() => { /* fall back to defaults */ });
+
+  // ---- Club settings (default match format) ----
+  let clubDefaultSetsToWin = 2; // Best of 3, matches the engine's own default
+  fetch(DB_URL + '/settings.json').then(r => r.json()).then((s) => {
+    if (s && (s.defaultSetsToWin === 1 || s.defaultSetsToWin === 2)) clubDefaultSetsToWin = s.defaultSetsToWin;
+  }).catch(() => { /* keep the built-in default */ });
+
   // ---- Match identity ----
   // Every match gets its own Firebase location (/matches/{matchId}/...) instead of
   // one shared /match — a fresh match never collides with an old one, each match's
@@ -1307,6 +1401,94 @@
   document.getElementById('newCourtName').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('addCourtBtn').click();
   });
+
+  // ---- Default match format ----
+  function updateDefaultFormatUI(){
+    const wrap = document.getElementById('defaultFormatBtns');
+    [...wrap.children].forEach(b => b.classList.toggle('active', Number(b.dataset.v) === clubDefaultSetsToWin));
+  }
+  document.getElementById('defaultFormatBtns').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-v]');
+    if (!btn) return;
+    clubDefaultSetsToWin = Number(btn.dataset.v);
+    updateDefaultFormatUI();
+    firebasePut('/settings/defaultSetsToWin.json', clubDefaultSetsToWin);
+  });
+
+  // ---- Additional admin logins ----
+  // Uses a secondary Firebase app instance so creating a new account never signs
+  // the current reception device out of its own session.
+  document.getElementById('addAdminBtn').addEventListener('click', () => {
+    const email = document.getElementById('newAdminEmail').value.trim();
+    const pw = document.getElementById('newAdminPassword').value;
+    const errBox = document.getElementById('addAdminError');
+    if (!email || !pw){ errBox.textContent = 'Enter both email and password.'; return; }
+    if (pw.length < 6){ errBox.textContent = 'Password must be at least 6 characters.'; return; }
+    errBox.textContent = 'Creating…';
+    let secondaryApp;
+    try {
+      secondaryApp = firebase.apps.find(a => a.name === 'Secondary') || firebase.initializeApp(firebase.app().options, 'Secondary');
+    } catch(err){ errBox.textContent = 'Could not start a secondary session.'; return; }
+    secondaryApp.auth().createUserWithEmailAndPassword(email, pw).then(() => {
+      return secondaryApp.auth().signOut();
+    }).then(() => {
+      errBox.textContent = '';
+      document.getElementById('newAdminEmail').value = '';
+      document.getElementById('newAdminPassword').value = '';
+      const btn = document.getElementById('addAdminBtn');
+      const old = btn.textContent;
+      btn.textContent = 'Added!';
+      setTimeout(() => { btn.textContent = old; }, 1500);
+    }).catch((err) => {
+      errBox.textContent = err && err.message ? err.message : 'Could not create login.';
+    });
+  });
+
+  // ---- Branding & Colours ----
+  let pendingLogoDataUrl = null;
+  function loadBrandingIntoForm(){
+    pendingLogoDataUrl = null;
+    fetch(DB_URL + '/branding.json').then(r => r.json()).then((b) => {
+      b = b || {};
+      document.getElementById('brandingBrandColor').value = b.brandColor || '#8B3916';
+      document.getElementById('brandingTeamAColor').value = b.teamAColor || '#D7E85B';
+      document.getElementById('brandingTeamBColor').value = b.teamBColor || '#1C6FEB';
+      document.getElementById('brandingLogoPreview').src = b.logoDataUrl || 'images/recess-logo-transparent.png';
+    }).catch(() => { /* leave defaults showing */ });
+  }
+  document.getElementById('brandingLogoFile').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    const errBox = document.getElementById('brandingError');
+    if (!file) return;
+    if (file.size > 800000){
+      errBox.textContent = 'That image is quite large — pick something under ~800KB.';
+      return;
+    }
+    errBox.textContent = '';
+    const reader = new FileReader();
+    reader.onload = () => {
+      pendingLogoDataUrl = reader.result;
+      document.getElementById('brandingLogoPreview').src = pendingLogoDataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+  document.getElementById('saveBrandingBtn').addEventListener('click', () => {
+    const payload = {
+      brandColor: document.getElementById('brandingBrandColor').value,
+      teamAColor: document.getElementById('brandingTeamAColor').value,
+      teamBColor: document.getElementById('brandingTeamBColor').value
+    };
+    if (pendingLogoDataUrl) payload.logoDataUrl = pendingLogoDataUrl;
+    fetch(DB_URL + '/branding.json').then(r => r.json()).then((existing) => {
+      const merged = Object.assign({}, existing || {}, payload);
+      firebasePut('/branding.json', merged);
+      applyBranding(merged);
+      const btn = document.getElementById('saveBrandingBtn');
+      const old = btn.textContent;
+      btn.textContent = 'Saved!';
+      setTimeout(() => { btn.textContent = old; }, 1500);
+    });
+  });
   // ---- History calendar ----
   let calendarMonth = new Date();
   function renderCalendar(){
@@ -1366,6 +1548,36 @@
       entries.forEach(entry => wrap.appendChild(buildCompletedCard(entry)));
     }).catch(() => { wrap.innerHTML = '<div class="receptionCardEmpty">Couldn\'t load match history.</div>'; });
   }
+
+  function csvEscape(val){
+    const s = String(val == null ? '' : val);
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  document.getElementById('exportCsvBtn').addEventListener('click', () => {
+    fetch(DB_URL + '/history.json').then(r => r.json()).then((data) => {
+      const entries = data ? Object.values(data).sort((a, b) => (b.ts || 0) - (a.ts || 0)) : [];
+      const header = ['Date', 'Time', 'Team A', 'Team B', 'Sets A', 'Sets B', 'Winner', 'Duration (min)'];
+      const rows = entries.map(e => {
+        const d = e.ts ? new Date(e.ts) : null;
+        const winnerName = e.winner === 'a' ? e.teamA : (e.winner === 'b' ? e.teamB : 'Tie');
+        return [
+          d ? d.toLocaleDateString() : '', d ? d.toLocaleTimeString() : '',
+          e.teamA || '', e.teamB || '', e.setsA || 0, e.setsB || 0,
+          winnerName || '', e.durationMins != null ? e.durationMins : ''
+        ];
+      });
+      const csv = [header, ...rows].map(r => r.map(csvEscape).join(',')).join('\n');
+      const blob = new Blob([csv], {type: 'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'padel-match-history.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }).catch(() => { alert("Couldn't load match history to export."); });
+  });
 
   // ---- Scheduled matches ----
   function refreshScheduledList(){
@@ -1478,7 +1690,7 @@
     document.querySelectorAll('.receptionNavBtn').forEach(b => b.classList.toggle('active', b.dataset.page === pageId));
     if (pageId === 'pageDashboard'){ refreshDashboardActiveMatch(); refreshDashboardCompleted(); refreshScheduledList(); }
     if (pageId === 'pageMatches'){ renderCalendar(); refreshMatchesHistoryList(); }
-    if (pageId === 'pageSettings') loadCourtsList();
+    if (pageId === 'pageSettings'){ loadCourtsList(); loadBrandingIntoForm(); updateDefaultFormatUI(); }
   }
   document.getElementById('receptionNav').addEventListener('click', (e) => {
     const btn = e.target.closest('.receptionNavBtn');
@@ -2969,10 +3181,10 @@
   }
   function beginFreshMatch(){
     closeMiniExpand();
-    const voiceOn = state.voiceOn, setsToWin = state.setsToWin;
+    const voiceOn = state.voiceOn;
     state = freshState();
     state.voiceOn = voiceOn;
-    state.setsToWin = setsToWin;
+    state.setsToWin = clubDefaultSetsToWin;
     const now = Date.now();
     state.startTime = now;
     state.setStartTime = now;
@@ -2983,10 +3195,10 @@
   function startNewGameFlow(){
     if (!canAdmin()) return;
     closeMiniExpand();
-    const voiceOn = state.voiceOn, setsToWin = state.setsToWin;
+    const voiceOn = state.voiceOn;
     state = freshState();
     state.voiceOn = voiceOn;
-    state.setsToWin = setsToWin;
+    state.setsToWin = clubDefaultSetsToWin;
     history = [];
     overlayDismissed = false;
     // Don't rotate matchId / go active yet — that only happens once setup genuinely
