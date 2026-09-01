@@ -464,7 +464,11 @@
     position:absolute; top:16px; right:18px;
     font-size:13px; font-weight:800; letter-spacing:.03em; color:var(--brand);
   }
-  .receptionCardLabel{ font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; opacity:.55; }
+  .receptionCardLabel{
+    font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; opacity:.55;
+    padding-bottom:10px; margin-bottom:4px; border-bottom:1px solid rgba(242,239,230,0.1);
+  }
+  .settingsGrid{ grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); align-items:start; }
   .receptionCardEmpty{ font-size:14px; opacity:.5; }
   #dashboardActiveMatch{ font-size:15px; line-height:1.5; opacity:.9; min-height:20px; }
   .receptionNote{ font-size:14px; opacity:.55; line-height:1.5; max-width:520px; margin-top:8px; }
@@ -595,6 +599,7 @@
     font-size:16px;
   }
   .row:first-of-type{ border-top:none; }
+  .receptionCardLabel + .row{ border-top:none; }
   .toggle{
     width:48px; height:28px; border-radius:20px; background:rgba(242,239,230,0.2);
     position:relative; cursor:pointer; flex-shrink:0;
@@ -773,9 +778,34 @@
     <div class="receptionPage" id="pageSettings">
       <h1>Settings</h1>
 
-      <div class="receptionSection">
-        <h2>Branding &amp; Colours</h2>
-        <div class="receptionCard" style="max-width:420px;">
+      <div class="receptionCardGrid settingsGrid">
+
+        <div class="receptionCard">
+          <div class="receptionCardLabel">Voice Announcements</div>
+          <div class="row">
+            <span>Voice announcements</span>
+            <div class="toggle on" id="settingsVoiceToggle"></div>
+          </div>
+          <div class="setupGroup">
+            <div class="setupLabel">Voice set</div>
+            <div class="segBtns" id="settingsVoiceSetBtns">
+              <button data-v="claude">Claude</button>
+              <button data-v="izzy" class="active">Izzy</button>
+              <button data-v="mus">Mus</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="receptionCard">
+          <div class="receptionCardLabel">Default Match Format</div>
+          <div class="segBtns" id="defaultFormatBtns">
+            <button data-v="1">Best of 1</button>
+            <button data-v="2" class="active">Best of 3</button>
+          </div>
+        </div>
+
+        <div class="receptionCard">
+          <div class="receptionCardLabel">Branding &amp; Colours</div>
           <div class="setupGroup">
             <div class="setupLabel">Logo</div>
             <img id="brandingLogoPreview" src="images/recess-logo-transparent.png" style="max-width:180px; display:block; margin-bottom:10px;" />
@@ -796,52 +826,25 @@
           <div id="brandingError"></div>
           <button id="saveBrandingBtn">Save Branding</button>
         </div>
-      </div>
 
-      <div class="receptionSection">
-        <h2>Default Match Format</h2>
-        <div class="receptionCard" style="max-width:420px;">
-          <div class="segBtns" id="defaultFormatBtns">
-            <button data-v="1">Best of 1</button>
-            <button data-v="2" class="active">Best of 3</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="receptionSection">
-        <h2>Admin Logins</h2>
-        <div class="receptionCard" style="max-width:420px;">
+        <div class="receptionCard">
+          <div class="receptionCardLabel">Admin Logins</div>
           <input type="email" id="newAdminEmail" placeholder="New admin email" />
           <input type="password" id="newAdminPassword" placeholder="Password (min 6 characters)" />
           <div id="addAdminError"></div>
           <button id="addAdminBtn">Add Admin Login</button>
+          <p class="receptionNote">Anyone with these details gets full reception access. There's currently no way to list or remove logins from here — for that, use the Firebase console (Authentication → Users).</p>
         </div>
-        <p class="receptionNote">Anyone with these details gets full reception access. There's currently no way to list or remove logins from here — for that, use the Firebase console (Authentication → Users).</p>
-      </div>
 
-      <div class="receptionSection">
-        <h2>Courts</h2>
-        <div id="courtsListWrap">Loading…</div>
-        <div class="courtAddRow">
-          <input type="text" id="newCourtName" placeholder="Court name (e.g. Court 3)" />
-          <button id="addCourtBtn">Add Court</button>
-        </div>
-      </div>
-
-      <div class="receptionCard" style="max-width:420px;">
-        <div class="receptionCardLabel">Voice Announcements</div>
-        <div class="row">
-          <span>Voice announcements</span>
-          <div class="toggle on" id="settingsVoiceToggle"></div>
-        </div>
-        <div class="setupGroup">
-          <div class="setupLabel">Voice set</div>
-          <div class="segBtns" id="settingsVoiceSetBtns">
-            <button data-v="claude">Claude</button>
-            <button data-v="izzy" class="active">Izzy</button>
-            <button data-v="mus">Mus</button>
+        <div class="receptionCard">
+          <div class="receptionCardLabel">Courts</div>
+          <div id="courtsListWrap">Loading…</div>
+          <div class="courtAddRow">
+            <input type="text" id="newCourtName" placeholder="Court name (e.g. Court 3)" />
+            <button id="addCourtBtn">Add Court</button>
           </div>
         </div>
+
       </div>
 
       <p class="receptionNote">Umpire and view-only links for a match are shown once you open or start it, in that match's console.</p>
