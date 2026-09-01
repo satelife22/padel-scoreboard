@@ -260,19 +260,6 @@
     font-size:15px; padding:12px 14px; margin-bottom:12px; font-family:inherit;
   }
   #scheduleMatchModal select option{ background:#101E19; color:var(--net); }
-  #quickCourtPickerModal{
-    position:fixed; inset:0; z-index:210;
-    background:rgba(6,12,10,0.94);
-    display:none; align-items:center; justify-content:center;
-    padding: 20px 16px;
-  }
-  #quickCourtPickerModal.show{ display:flex; }
-  #quickCourtPickerModal select{
-    width:100%; box-sizing:border-box; background:rgba(242,239,230,0.08);
-    border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
-    font-size:15px; padding:12px 14px; font-family:inherit;
-  }
-  #quickCourtPickerModal select option{ background:#101E19; color:var(--net); }
   #scheduleDate, #scheduleTime{ display:inline-block; width:calc(50% - 5px); }
   #scheduleDate{ margin-right:10px; }
   #scheduleError{ color:#FF6B6B; font-size:13px; min-height:16px; margin-bottom:4px; }
@@ -677,6 +664,18 @@
   }
   #playerSetup.show{ display:flex; justify-content:center; }
   #playerSetup .panel{ margin:auto 0; }
+  #onCourtModal{
+    position:fixed; inset:0; z-index:70;
+    background:rgba(6,12,10,0.94);
+    display:none;
+    overflow-y:auto;
+    padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+  }
+  #onCourtModal.show{ display:flex; justify-content:center; }
+  #onCourtModal .panel{ margin:auto 0; }
+  #onCourtServerChoices button.active, #onCourtLeftBtn.active, #onCourtRightBtn.active{
+    background:var(--teamA); color:var(--teamA-ink);
+  }
   .setupGroup{ margin-bottom:16px; }
 
   /* Share block (QR code + link) in settings */
@@ -1096,19 +1095,6 @@
   </div>
 </div>
 
-<div id="quickCourtPickerModal">
-  <div class="panel">
-    <h2>Which court?</h2>
-    <div class="setupGroup">
-      <select id="quickCourtSelect"></select>
-    </div>
-    <div class="panelBtns">
-      <button id="quickCourtSkipBtn" class="ghostBtn">Skip</button>
-      <button id="quickCourtConfirmBtn">Continue</button>
-    </div>
-  </div>
-</div>
-
 <div id="scheduleMatchModal">
   <div class="panel">
     <h2 id="scheduleModalTitle">Schedule Match</h2>
@@ -1147,10 +1133,20 @@
         <input type="text" id="inB2" placeholder="Player 2" maxlength="18">
       </div>
       <div class="setupGroup">
+        <div class="setupLabel">Court</div>
+        <select id="setupCourtSelect"></select>
+      </div>
+      <div class="setupGroup">
         <div class="setupLabel">Best of</div>
         <div class="segBtns" id="bestOfBtns">
           <button data-v="1">Best of 1</button>
           <button data-v="2" class="active">Best of 3</button>
+        </div>
+      </div>
+      <div class="setupGroup">
+        <div class="row" style="border-top:none; padding:0;">
+          <span>Let umpire set serve order &amp; side on court</span>
+          <div class="toggle" id="onCourtSetupToggle"></div>
         </div>
       </div>
       <div class="panelBtns">
@@ -1188,6 +1184,33 @@
       <div class="panelBtns">
         <button id="setupBack3" class="ghostBtn">Back</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div id="onCourtModal">
+  <div class="panel">
+    <h2>Set Up On Court</h2>
+    <div id="onCourtServerGroup" class="setupGroup">
+      <div class="setupLabel">Who serves first?</div>
+      <div class="serverChoices" id="onCourtServerChoices"></div>
+    </div>
+    <div class="setupGroup">
+      <div class="setupLabel">Which side is Team A?</div>
+      <p class="setupHint">Looking at this screen from the court, where is Team A starting?</p>
+      <div class="serverChoices">
+        <button id="onCourtLeftBtn">
+          <span>Starting court position</span>
+          ← Team A is on the LEFT
+        </button>
+        <button id="onCourtRightBtn">
+          <span>Starting court position</span>
+          Team A is on the RIGHT →
+        </button>
+      </div>
+    </div>
+    <div class="panelBtns">
+      <button id="onCourtStartBtn">Start Match</button>
     </div>
   </div>
 </div>
@@ -1923,44 +1946,14 @@
     hideAdminDashboard();
     await initialiseApp();
     showAdminMatchConsole();
-    openQuickCourtPicker();
+    document.getElementById('newGameBtn').click();
   }
   document.getElementById('dashboardNewBtn').addEventListener('click', startNewGameFromReception);
   document.getElementById('matchesNewBtn').addEventListener('click', startNewGameFromReception);
 
-  // ---- Quick court picker (shown before Start New Game opens the setup wizard) ----
+  // pendingCourtId/pendingCourtName carry the court chosen in wizard step 1
+  // through to finishSetup()/finishSkipSetup(), which attach it to the match.
   let pendingCourtId = null, pendingCourtName = null;
-  function openQuickCourtPicker(){
-    const sel = document.getElementById('quickCourtSelect');
-    sel.innerHTML = '<option value="">Loading courts…</option>';
-    fetch(DB_URL + '/courts.json').then(r => r.json()).then((data) => {
-      sel.innerHTML = '';
-      if (!data){
-        sel.innerHTML = '<option value="">No courts set up yet</option>';
-        return;
-      }
-      Object.entries(data).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0)).forEach(([id, court]) => {
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = court.name || 'Unnamed court';
-        sel.appendChild(opt);
-      });
-    }).catch(() => { sel.innerHTML = '<option value="">Couldn\'t load courts</option>'; });
-    document.getElementById('quickCourtPickerModal').classList.add('show');
-  }
-  document.getElementById('quickCourtConfirmBtn').addEventListener('click', () => {
-    const sel = document.getElementById('quickCourtSelect');
-    pendingCourtId = sel.value || null;
-    pendingCourtName = (pendingCourtId && sel.options[sel.selectedIndex]) ? sel.options[sel.selectedIndex].textContent : null;
-    document.getElementById('quickCourtPickerModal').classList.remove('show');
-    document.getElementById('newGameBtn').click();
-  });
-  document.getElementById('quickCourtSkipBtn').addEventListener('click', () => {
-    pendingCourtId = null;
-    pendingCourtName = null;
-    document.getElementById('quickCourtPickerModal').classList.remove('show');
-    document.getElementById('newGameBtn').click();
-  });
 
   // ---- Admin Match Console ----
   // Admin never sees the real fullscreen scoreboard directly — instead a compact
@@ -1997,7 +1990,7 @@
   document.getElementById('consolePauseBtn').addEventListener('click', () => { togglePause(); });
   document.getElementById('consoleNewGameBtn').addEventListener('click', () => {
     closeMobileSidebar('adminMatchConsole');
-    openQuickCourtPicker();
+    document.getElementById('newGameBtn').click();
   });
   document.getElementById('consoleResetBtn').addEventListener('click', () => {
     closeMobileSidebar('adminMatchConsole');
@@ -2830,6 +2823,7 @@
 
     document.getElementById('voiceToggle').classList.toggle('on', state.voiceOn);
     renderConsolePreview();
+    maybeShowOnCourtModal();
 
     persist();
   }
@@ -3193,12 +3187,42 @@
     document.getElementById('inA2').value = state.players.a[1];
     document.getElementById('inB1').value = state.players.b[0];
     document.getElementById('inB2').value = state.players.b[1];
+    document.getElementById('onCourtSetupToggle').classList.remove('on');
     el.setupStep1.style.display = '';
     el.setupStep2.style.display = 'none';
     el.setupStep3.style.display = 'none';
     el.setupStep4.style.display = 'none';
     el.playerSetup.classList.add('show');
+    populateSetupCourtSelect();
   }
+  async function populateSetupCourtSelect(){
+    const sel = document.getElementById('setupCourtSelect');
+    sel.innerHTML = '<option value="">Loading courts…</option>';
+    try {
+      const data = await fetch(DB_URL + '/courts.json').then(r => r.json());
+      sel.innerHTML = '';
+      if (!data){
+        sel.innerHTML = '<option value="">No courts set up yet</option>';
+        return;
+      }
+      const entries = Object.entries(data).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0));
+      for (const [id, court] of entries){
+        const busyId = await courtBusyMatchId(id);
+        if (busyId) continue; // court currently has a match in progress — leave it out
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = court.name || 'Unnamed court';
+        sel.appendChild(opt);
+      }
+      if (!sel.children.length){
+        sel.innerHTML = '<option value="">All courts are currently in use</option>';
+      }
+    } catch(err){ sel.innerHTML = '<option value="">Couldn\'t load courts</option>'; }
+  }
+  document.getElementById('onCourtSetupToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.currentTarget.classList.toggle('on');
+  });
 
   let setupNames = null;   // {a:[..], b:[..]} captured once step2 is built
   let setupFirst = null;   // {t, p} chosen in step2
@@ -3248,6 +3272,120 @@
     });
   }
 
+  function captureSetupCourt(){
+    const sel = document.getElementById('setupCourtSelect');
+    pendingCourtId = sel.value || null;
+    pendingCourtName = (pendingCourtId && sel.options[sel.selectedIndex]) ? sel.options[sel.selectedIndex].textContent : null;
+  }
+  function buildRotatedServeOrder(firstT, firstP){
+    const idx = DEFAULT_SERVE_ORDER.findIndex(s => s.t === firstT && s.p === firstP);
+    const base = idx >= 0 ? idx : 0;
+    const rotated = [];
+    for (let i = 0; i < 4; i++) rotated.push(DEFAULT_SERVE_ORDER[(base + i) % 4]);
+    return rotated;
+  }
+  let onCourtChosenServer = null;
+  let onCourtChosenSide = null;
+  function maybeShowOnCourtModal(){
+    const modal = document.getElementById('onCourtModal');
+    if (!state.courtSideUndecided || !canControl() || !document.body.classList.contains('show-scoreboard')){
+      modal.classList.remove('show');
+      return;
+    }
+    if (modal.classList.contains('show')) return; // already open — don't rebuild under the umpire's thumb
+    onCourtChosenServer = null;
+    onCourtChosenSide = null;
+    const hasNames = !!(state.players.a[0] || state.players.a[1] || state.players.b[0] || state.players.b[1]);
+    const serverGroup = document.getElementById('onCourtServerGroup');
+    const choices = document.getElementById('onCourtServerChoices');
+    choices.innerHTML = '';
+    if (hasNames){
+      serverGroup.style.display = '';
+      DEFAULT_SERVE_ORDER.forEach((slot) => {
+        const teamPlayers = slot.t === 'a' ? state.players.a : state.players.b;
+        const label = teamPlayers[slot.p] || ((slot.t === 'a' ? state.names.a : state.names.b) + ' P' + (slot.p + 1));
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onCourtChosenServer = {t: slot.t, p: slot.p};
+          [...choices.children].forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+        choices.appendChild(btn);
+      });
+    } else {
+      serverGroup.style.display = 'none';
+    }
+    document.getElementById('onCourtLeftBtn').classList.remove('active');
+    document.getElementById('onCourtRightBtn').classList.remove('active');
+    modal.classList.add('show');
+  }
+  document.getElementById('onCourtLeftBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    onCourtChosenSide = true;
+    document.getElementById('onCourtLeftBtn').classList.add('active');
+    document.getElementById('onCourtRightBtn').classList.remove('active');
+  });
+  document.getElementById('onCourtRightBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    onCourtChosenSide = false;
+    document.getElementById('onCourtRightBtn').classList.add('active');
+    document.getElementById('onCourtLeftBtn').classList.remove('active');
+  });
+  document.getElementById('onCourtStartBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!canControl()) return;
+    if (onCourtChosenSide === null) return; // side is always required
+    const hasNames = !!(state.players.a[0] || state.players.a[1] || state.players.b[0] || state.players.b[1]);
+    if (hasNames && onCourtChosenServer){
+      state.serveOrder = buildRotatedServeOrder(onCourtChosenServer.t, onCourtChosenServer.p);
+      state.serverIndex = 0;
+      state.initialServerIndex = 0;
+      state.servingActive = true;
+    }
+    state.teamAOnLeft = onCourtChosenSide;
+    state.initialTeamAOnLeft = onCourtChosenSide;
+    state.courtSideUndecided = false;
+    markDirty();
+    document.getElementById('onCourtModal').classList.remove('show');
+    render(null);
+    speak(state.servingActive ? (serverName() + ' to serve.') : 'Match ready.');
+  });
+
+  function finishSetupDeferred(skipNames){
+    if (!canAdmin()) return;
+    if (skipNames){
+      state.players = {a: ['', ''], b: ['', '']};
+    } else {
+      state.players.a = [
+        document.getElementById('inA1').value.trim() || 'Player 1',
+        document.getElementById('inA2').value.trim() || 'Player 2'
+      ];
+      state.players.b = [
+        document.getElementById('inB1').value.trim() || 'Player 1',
+        document.getElementById('inB2').value.trim() || 'Player 2'
+      ];
+    }
+    state.servingActive = false;
+    state.courtSideUndecided = true;
+    state.teamAOnLeft = true;
+    state.initialTeamAOnLeft = true;
+    state.paused = false;
+    state.pausedAt = null;
+    state.totalPausedMs = 0;
+    const now = Date.now();
+    state.startTime = now;
+    state.setStartTime = now;
+    state.matchStarted = true;
+    state.courtId = pendingCourtId;
+    state.courtName = pendingCourtName;
+    pendingCourtId = null; pendingCourtName = null;
+    rotateMatchId();
+    markDirty();
+    el.playerSetup.classList.remove('show');
+    render(null);
+  }
   function finishSetup(first, second, teamAOnLeft){
     if (!canAdmin()) return;
     state.players.a = setupNames.a;
@@ -3283,6 +3421,11 @@
 
   document.getElementById('setupNext').addEventListener('click', (e) => {
     e.stopPropagation();
+    captureSetupCourt();
+    if (document.getElementById('onCourtSetupToggle').classList.contains('on')){
+      finishSetupDeferred(false);
+      return;
+    }
     buildServerChoices();
     el.setupStep1.style.display = 'none';
     el.setupStep2.style.display = '';
@@ -3319,6 +3462,11 @@
   });
   document.getElementById('setupSkip').addEventListener('click', (e) => {
     e.stopPropagation();
+    captureSetupCourt();
+    if (document.getElementById('onCourtSetupToggle').classList.contains('on')){
+      finishSetupDeferred(true);
+      return;
+    }
     setupSkippedPlayers = true;
     el.setupStep1.style.display = 'none';
     el.setupStep2.style.display = 'none';
