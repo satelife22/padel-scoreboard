@@ -226,8 +226,38 @@
     padding: 20px 16px;
   }
   #historyModal.show{ display:flex; }
+  #dayDetailModal{
+    position:fixed; inset:0; z-index:210;
+    background:rgba(6,12,10,0.94);
+    display:none; align-items:center; justify-content:center;
+    padding: 20px 16px;
+  }
+  #dayDetailModal.show{ display:flex; }
+  #dayDetailBody{ overflow-y:auto; margin:14px 0 18px; max-height:60vh; }
+  #dayDetailBody .receptionCard{ margin-bottom:10px; }
   .historyPanel{ margin:0; width:min(92vw, 460px); max-height:80vh; display:flex; flex-direction:column; }
   #historyTableWrap{ overflow-y:auto; margin:14px 0 18px; border-radius:8px; }
+  .calHeader{
+    display:flex; align-items:center; justify-content:space-between;
+    font-size:15px; font-weight:800; margin-bottom:14px;
+  }
+  .calNavBtn{
+    background:rgba(242,239,230,0.1); color:var(--net); border:none; border-radius:8px;
+    width:30px; height:30px; font-size:16px; cursor:pointer; font-family:inherit;
+  }
+  .calGrid{ display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; }
+  .calDow{ text-align:center; font-size:11px; opacity:.5; padding-bottom:4px; }
+  .calCell{
+    position:relative; text-align:center; padding:8px 0; border-radius:8px; font-size:13px;
+  }
+  .calEmpty{ opacity:0; pointer-events:none; }
+  .calToday{ border:1px solid rgba(242,239,230,0.35); }
+  .calHasMatches{ background:rgba(139,57,22,0.35); cursor:pointer; font-weight:700; }
+  .calHasMatches:hover{ background:rgba(139,57,22,0.55); }
+  .calDot{
+    display:block; width:4px; height:4px; border-radius:50%; background:#C4703D;
+    margin:2px auto 0;
+  }
   #historyTable{ width:100%; border-collapse:collapse; font-size:13px; }
   #historyTable th{
     text-align:left; padding:8px 8px; font-size:11px; letter-spacing:.04em; text-transform:uppercase;
@@ -621,8 +651,13 @@
       </div>
 
       <div class="receptionSection">
-        <h2>Completed</h2>
+        <h2>Completed Today</h2>
         <div id="dashboardCompletedWrap" class="receptionCardEmpty">Loading…</div>
+      </div>
+
+      <div class="receptionSection">
+        <h2>History Calendar</h2>
+        <div id="calendarWrap" class="receptionCard" style="max-width:340px;">Loading…</div>
       </div>
     </div>
 
@@ -817,6 +852,17 @@
   </div>
 </div>
 
+<div id="dayDetailModal">
+  <div class="panel historyPanel">
+    <h2 id="dayDetailTitle">Matches</h2>
+    <div id="dayDetailBody"></div>
+    <div class="panelBtns">
+      <button id="closeDayDetail">Done</button>
+    </div>
+  </div>
+</div>
+
+
 <div id="playerSetup">
   <div class="panel">
     <div id="setupStep1">
@@ -1004,43 +1050,51 @@
       }
     });
   }
+  function buildCompletedCard(entry){
+    const row = document.createElement('div');
+    row.className = 'receptionCard completedRow';
+    const badge = document.createElement('div');
+    badge.className = 'cardCourtBadge';
+    badge.textContent = 'Court 1';
+    row.appendChild(badge);
+    const top = document.createElement('div');
+    top.className = 'completedTop';
+    const teams = document.createElement('span');
+    teams.textContent = (entry.teamA || 'Team A') + ' vs ' + (entry.teamB || 'Team B');
+    const score = document.createElement('span');
+    score.className = 'completedScore';
+    score.textContent = (entry.setsA || 0) + '-' + (entry.setsB || 0);
+    top.appendChild(teams);
+    top.appendChild(score);
+    row.appendChild(top);
+    if (entry.ts){
+      const mins = entry.durationMins != null ? entry.durationMins : 0;
+      const endStr = new Date(entry.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      const startStr = new Date(entry.ts - mins * 60000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      const detail = document.createElement('div');
+      detail.className = 'cardDetail';
+      detail.textContent = mins + ' min · ' + startStr + '–' + endStr;
+      row.appendChild(detail);
+    }
+    return row;
+  }
+  function dateKey(ts){
+    const d = new Date(ts);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
   function refreshDashboardCompleted(){
     const wrap = document.getElementById('dashboardCompletedWrap');
     wrap.textContent = 'Loading…';
     fetch(DB_URL + '/history.json').then(r => r.json()).then((data) => {
       if (!data){ wrap.textContent = 'No completed matches yet.'; return; }
-      const entries = Object.values(data).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 5);
-      if (!entries.length){ wrap.textContent = 'No completed matches yet.'; return; }
+      const todayKey = dateKey(Date.now());
+      const entries = Object.values(data)
+        .filter(e => e.ts && dateKey(e.ts) === todayKey)
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      if (!entries.length){ wrap.textContent = 'No matches completed today.'; return; }
       wrap.innerHTML = '';
       wrap.className = '';
-      entries.forEach((entry) => {
-        const row = document.createElement('div');
-        row.className = 'receptionCard completedRow';
-        const badge = document.createElement('div');
-        badge.className = 'cardCourtBadge';
-        badge.textContent = 'Court 1';
-        row.appendChild(badge);
-        const top = document.createElement('div');
-        top.className = 'completedTop';
-        const teams = document.createElement('span');
-        teams.textContent = (entry.teamA || 'Team A') + ' vs ' + (entry.teamB || 'Team B');
-        const score = document.createElement('span');
-        score.className = 'completedScore';
-        score.textContent = (entry.setsA || 0) + '-' + (entry.setsB || 0);
-        top.appendChild(teams);
-        top.appendChild(score);
-        row.appendChild(top);
-        if (entry.ts){
-          const mins = entry.durationMins != null ? entry.durationMins : 0;
-          const endStr = new Date(entry.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-          const startStr = new Date(entry.ts - mins * 60000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-          const detail = document.createElement('div');
-          detail.className = 'cardDetail';
-          detail.textContent = mins + ' min · ' + startStr + '–' + endStr;
-          row.appendChild(detail);
-        }
-        wrap.appendChild(row);
-      });
+      entries.forEach(entry => wrap.appendChild(buildCompletedCard(entry)));
     }).catch(() => { wrap.textContent = 'Couldn\'t load completed matches.'; });
   }
   // ---- Courts ----
@@ -1094,10 +1148,59 @@
   document.getElementById('newCourtName').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('addCourtBtn').click();
   });
+  // ---- History calendar ----
+  let calendarMonth = new Date();
+  function renderCalendar(){
+    const wrap = document.getElementById('calendarWrap');
+    wrap.textContent = 'Loading…';
+    fetch(DB_URL + '/history.json').then(r => r.json()).then((raw) => {
+      const data = raw || {};
+      const counts = {};
+      Object.values(data).forEach(e => { if (e.ts){ const k = dateKey(e.ts); counts[k] = (counts[k] || 0) + 1; } });
+      const year = calendarMonth.getFullYear();
+      const month = calendarMonth.getMonth();
+      const firstDay = new Date(year, month, 1);
+      const startWeekday = firstDay.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const monthLabel = firstDay.toLocaleDateString([], {month:'long', year:'numeric'});
+      const todayKey = dateKey(Date.now());
+      let html = '<div class="calHeader"><button id="calPrevBtn" class="calNavBtn">‹</button><span>' + monthLabel + '</span><button id="calNextBtn" class="calNavBtn">›</button></div>';
+      html += '<div class="calGrid">';
+      ['S','M','T','W','T','F','S'].forEach(d => { html += '<div class="calDow">' + d + '</div>'; });
+      for (let i = 0; i < startWeekday; i++) html += '<div class="calCell calEmpty">.</div>';
+      for (let d = 1; d <= daysInMonth; d++){
+        const key = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+        const has = counts[key] > 0;
+        const isToday = key === todayKey;
+        html += '<div class="calCell' + (has ? ' calHasMatches' : '') + (isToday ? ' calToday' : '') + '" data-date="' + key + '">' + d + (has ? '<span class="calDot"></span>' : '') + '</div>';
+      }
+      html += '</div>';
+      wrap.innerHTML = html;
+      document.getElementById('calPrevBtn').addEventListener('click', () => { calendarMonth = new Date(year, month - 1, 1); renderCalendar(); });
+      document.getElementById('calNextBtn').addEventListener('click', () => { calendarMonth = new Date(year, month + 1, 1); renderCalendar(); });
+      wrap.querySelectorAll('.calHasMatches').forEach(cell => {
+        cell.addEventListener('click', () => openDayDetail(cell.dataset.date, data));
+      });
+    }).catch(() => { wrap.textContent = 'Couldn\'t load calendar.'; });
+  }
+  function openDayDetail(key, data){
+    const entries = Object.values(data).filter(e => e.ts && dateKey(e.ts) === key).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    const body = document.getElementById('dayDetailBody');
+    body.innerHTML = '';
+    const [y, m, d] = key.split('-').map(Number);
+    document.getElementById('dayDetailTitle').textContent = new Date(y, m - 1, d).toLocaleDateString([], {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+    if (!entries.length){ body.textContent = 'No matches that day.'; }
+    else entries.forEach(entry => body.appendChild(buildCompletedCard(entry)));
+    document.getElementById('dayDetailModal').classList.add('show');
+  }
+  document.getElementById('closeDayDetail').addEventListener('click', () => {
+    document.getElementById('dayDetailModal').classList.remove('show');
+  });
+
   function switchReceptionPage(pageId){
     document.querySelectorAll('.receptionPage').forEach(p => p.classList.toggle('active', p.id === pageId));
     document.querySelectorAll('.receptionNavBtn').forEach(b => b.classList.toggle('active', b.dataset.page === pageId));
-    if (pageId === 'pageDashboard'){ refreshDashboardActiveMatch(); refreshDashboardCompleted(); }
+    if (pageId === 'pageDashboard'){ refreshDashboardActiveMatch(); refreshDashboardCompleted(); renderCalendar(); }
     if (pageId === 'pageCourts') loadCourtsList();
   }
   document.getElementById('receptionNav').addEventListener('click', (e) => {
