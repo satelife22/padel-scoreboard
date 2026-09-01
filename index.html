@@ -482,9 +482,14 @@
   .scheduledCard{ max-width:460px; }
   .scheduledTeams{ padding-right:70px; }
   .scheduledCard .cardDetail{ margin-top:2px; }
+  .scheduledBtnRow{ display:flex; gap:8px; margin-top:6px; }
+  .scheduledEditBtn{
+    background:rgba(242,239,230,0.1); color:var(--net); border:none; border-radius:8px;
+    padding:8px 12px; font-family:inherit; font-size:13px; cursor:pointer; flex:1;
+  }
   .scheduledCancelBtn{
     background:rgba(255,107,107,0.12); color:#FF6B6B; border:none; border-radius:8px;
-    padding:8px 12px; font-family:inherit; font-size:13px; cursor:pointer; margin-top:6px;
+    padding:8px 12px; font-family:inherit; font-size:13px; cursor:pointer; flex:1;
   }
   .dashboardQuickActions{ max-width:480px; margin-bottom:32px; }
   .receptionSection{ margin-bottom:30px; }
@@ -977,7 +982,7 @@
 
 <div id="scheduleMatchModal">
   <div class="panel">
-    <h2>Schedule Match</h2>
+    <h2 id="scheduleModalTitle">Schedule Match</h2>
     <input type="text" id="scheduleTeamA" placeholder="Team A (e.g. Josh/Mus)" />
     <input type="text" id="scheduleTeamB" placeholder="Team B (e.g. Toby/DT37)" />
     <div class="setupGroup">
@@ -1377,6 +1382,12 @@
           ? new Date(sched.startTime).toLocaleString([], {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})
           : 'No time set';
         card.appendChild(when);
+        const btnRow = document.createElement('div');
+        btnRow.className = 'scheduledBtnRow';
+        const editBtn = document.createElement('button');
+        editBtn.className = 'scheduledEditBtn';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => { openScheduleModal(id, sched); });
         const cancelBtn = document.createElement('button');
         cancelBtn.className = 'scheduledCancelBtn';
         cancelBtn.textContent = 'Cancel';
@@ -1386,18 +1397,24 @@
             setTimeout(refreshScheduledList, 300);
           }
         });
-        card.appendChild(cancelBtn);
+        btnRow.appendChild(editBtn);
+        btnRow.appendChild(cancelBtn);
+        card.appendChild(btnRow);
         wrap.appendChild(card);
       });
     }).catch(() => { wrap.innerHTML = '<div class="receptionCardEmpty">Couldn\'t load scheduled matches.</div>'; });
   }
-  function openScheduleModal(){
-    document.getElementById('scheduleTeamA').value = '';
-    document.getElementById('scheduleTeamB').value = '';
+  let editingScheduleId = null;
+  function openScheduleModal(existingId, existing){
+    editingScheduleId = existingId || null;
+    document.getElementById('scheduleModalTitle').textContent = existingId ? 'Edit Scheduled Match' : 'Schedule Match';
+    document.getElementById('saveScheduleBtn').textContent = existingId ? 'Save Changes' : 'Save';
+    document.getElementById('scheduleTeamA').value = existing ? (existing.teamA || '') : '';
+    document.getElementById('scheduleTeamB').value = existing ? (existing.teamB || '') : '';
     document.getElementById('scheduleError').textContent = '';
-    const now = new Date();
-    document.getElementById('scheduleDate').value = now.toISOString().slice(0, 10);
-    document.getElementById('scheduleTime').value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const when = existing && existing.startTime ? new Date(existing.startTime) : new Date();
+    document.getElementById('scheduleDate').value = when.toISOString().slice(0, 10);
+    document.getElementById('scheduleTime').value = String(when.getHours()).padStart(2, '0') + ':' + String(when.getMinutes()).padStart(2, '0');
     const courtSel = document.getElementById('scheduleCourt');
     courtSel.innerHTML = '<option value="">Loading courts…</option>';
     fetch(DB_URL + '/courts.json').then(r => r.json()).then((data) => {
@@ -1410,12 +1427,13 @@
         const opt = document.createElement('option');
         opt.value = id;
         opt.textContent = court.name || 'Unnamed court';
+        if (existing && existing.courtId === id) opt.selected = true;
         courtSel.appendChild(opt);
       });
     }).catch(() => { courtSel.innerHTML = '<option value="">Couldn\'t load courts</option>'; });
     document.getElementById('scheduleMatchModal').classList.add('show');
   }
-  document.getElementById('openScheduleBtn').addEventListener('click', openScheduleModal);
+  document.getElementById('openScheduleBtn').addEventListener('click', () => openScheduleModal(null, null));
   document.getElementById('cancelScheduleBtn').addEventListener('click', () => {
     document.getElementById('scheduleMatchModal').classList.remove('show');
   });
@@ -1434,10 +1452,12 @@
     const startTime = new Date(dateVal + 'T' + timeVal).getTime();
     if (!startTime || isNaN(startTime)){ errBox.textContent = 'Invalid date/time.'; return; }
     errBox.textContent = '';
-    firebasePut('/scheduled/' + genId() + '.json', {
+    const id = editingScheduleId || genId();
+    firebasePut('/scheduled/' + id + '.json', {
       teamA: teamA, teamB: teamB, startTime: startTime,
       courtId: courtId, courtName: courtName, createdAt: Date.now()
     });
+    editingScheduleId = null;
     document.getElementById('scheduleMatchModal').classList.remove('show');
     setTimeout(refreshScheduledList, 300);
   });
