@@ -383,6 +383,40 @@
     border:1px solid rgba(242,239,230,0.22);
   }
   #matchesNewBtn, #matchesHistoryBtn{ max-width:280px; }
+  .dashboardQuickActions{ max-width:480px; margin-bottom:32px; }
+  .receptionSection{ margin-bottom:30px; }
+  .receptionSection h2{
+    font-size:13px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+    opacity:.55; margin:0 0 12px;
+  }
+  .courtAddRow{ display:flex; gap:10px; max-width:480px; margin-top:16px; }
+  .courtAddRow input{
+    flex:1; box-sizing:border-box; background:rgba(242,239,230,0.08);
+    border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
+    font-size:15px; padding:12px 14px; font-family:inherit;
+  }
+  #addCourtBtn{
+    background:var(--net); color:#101816; border:none; border-radius:10px;
+    padding:0 20px; font-family:'Barlow Condensed', sans-serif; font-weight:700;
+    letter-spacing:.06em; text-transform:uppercase; font-size:14px; cursor:pointer;
+  }
+  .courtRow{
+    display:flex; align-items:center; gap:12px;
+    background:#101E19; border:1px solid rgba(242,239,230,0.12); border-radius:12px;
+    padding:14px 16px; margin-bottom:10px; max-width:480px;
+  }
+  .courtRowName{ flex:1; font-size:15px; font-weight:700; }
+  .courtRowBtn{
+    background:rgba(242,239,230,0.1); color:var(--net); border:none; border-radius:8px;
+    padding:8px 12px; font-family:inherit; font-size:13px; cursor:pointer;
+  }
+  .courtRowDelete{ background:rgba(255,107,107,0.15); color:#FF6B6B; }
+  .completedRow{
+    display:flex; justify-content:space-between; gap:12px;
+    background:#101E19; border:1px solid rgba(242,239,230,0.12); border-radius:12px;
+    padding:12px 16px; margin-bottom:8px; max-width:520px; font-size:14px;
+  }
+  .completedRow .completedScore{ opacity:.7; }
   #loginScreen input{
     width:100%; box-sizing:border-box; background:rgba(242,239,230,0.08);
     border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
@@ -557,21 +591,30 @@
 
     <div class="receptionPage active" id="pageDashboard">
       <h1>Dashboard</h1>
-      <div class="receptionCardGrid">
-        <div class="receptionCard" id="dashboardActiveCard">
-          <div class="receptionCardLabel">Active Match</div>
-          <div id="dashboardActiveMatch">Checking for a match in progress…</div>
-          <button id="dashboardOpenBtn" class="ghostBtn" style="display:none;">Open Current Match</button>
+
+      <div class="panelBtns dashboardQuickActions">
+        <button id="dashboardNewBtn">Start New Game</button>
+        <button id="dashboardHistoryBtn" class="ghostBtn">View Match History</button>
+      </div>
+
+      <div class="receptionSection">
+        <h2>Active Games</h2>
+        <div class="receptionCardGrid" id="dashboardActiveWrap">
+          <div class="receptionCard" id="dashboardActiveCard">
+            <div id="dashboardActiveMatch">Checking for a match in progress…</div>
+            <button id="dashboardOpenBtn" class="ghostBtn" style="display:none;">Open Current Match</button>
+          </div>
         </div>
-        <div class="receptionCard">
-          <div class="receptionCardLabel">Scheduled</div>
-          <div class="receptionCardEmpty">Match scheduling isn't set up yet.</div>
-        </div>
-        <div class="receptionCard">
-          <div class="receptionCardLabel">Quick Actions</div>
-          <button id="dashboardNewBtn">Start New Game</button>
-          <button id="dashboardHistoryBtn" class="ghostBtn">View Match History</button>
-        </div>
+      </div>
+
+      <div class="receptionSection">
+        <h2>Scheduled</h2>
+        <div class="receptionCardEmpty">Match scheduling isn't set up yet.</div>
+      </div>
+
+      <div class="receptionSection">
+        <h2>Completed</h2>
+        <div id="dashboardCompletedWrap" class="receptionCardEmpty">Loading…</div>
       </div>
     </div>
 
@@ -583,17 +626,31 @@
 
     <div class="receptionPage" id="pageCourts">
       <h1>Courts</h1>
-      <div class="receptionCardGrid">
-        <div class="receptionCard">
-          <div class="receptionCardLabel">Court 1</div>
-          <div id="courtsCourt1Status">Checking…</div>
-        </div>
+      <div id="courtsListWrap">Loading…</div>
+      <div class="courtAddRow">
+        <input type="text" id="newCourtName" placeholder="Court name (e.g. Court 3)" />
+        <button id="addCourtBtn">Add Court</button>
       </div>
-      <p class="receptionNote">Multiple simultaneous courts aren't set up yet — for now everything runs through this one court.</p>
+      <p class="receptionNote">Courts you create here are stored permanently — code updates to the app never touch this data.</p>
     </div>
 
     <div class="receptionPage" id="pageSettings">
       <h1>Settings</h1>
+      <div class="receptionCard" style="max-width:420px;">
+        <div class="receptionCardLabel">Voice Announcements</div>
+        <div class="row">
+          <span>Voice announcements</span>
+          <div class="toggle on" id="settingsVoiceToggle"></div>
+        </div>
+        <div class="setupGroup">
+          <div class="setupLabel">Voice set</div>
+          <div class="segBtns" id="settingsVoiceSetBtns">
+            <button data-v="claude">Claude</button>
+            <button data-v="izzy" class="active">Izzy</button>
+            <button data-v="mus">Mus</button>
+          </div>
+        </div>
+      </div>
       <p class="receptionNote">Umpire and view-only links for a match are shown once you open or start it, under that match's own Settings panel.</p>
     </div>
 
@@ -916,9 +973,7 @@
   }
   function refreshDashboardActiveMatch(){
     const box = document.getElementById('dashboardActiveMatch');
-    const courtBox = document.getElementById('courtsCourt1Status');
     box.textContent = 'Checking for a match in progress…';
-    if (courtBox) courtBox.textContent = 'Checking…';
     getCurrentActiveMatch().then((active) => {
       if (active && active.state){
         const s = active.state;
@@ -926,18 +981,91 @@
         const score = s.games ? (' — ' + s.games.a + '-' + s.games.b) : '';
         box.textContent = names + score;
         document.getElementById('dashboardOpenBtn').style.display = '';
-        if (courtBox) courtBox.textContent = names + score;
       } else {
         box.textContent = 'No match currently in progress.';
         document.getElementById('dashboardOpenBtn').style.display = 'none';
-        if (courtBox) courtBox.textContent = 'Idle — no match in progress.';
       }
     });
   }
+  function refreshDashboardCompleted(){
+    const wrap = document.getElementById('dashboardCompletedWrap');
+    wrap.textContent = 'Loading…';
+    fetch(DB_URL + '/history.json').then(r => r.json()).then((data) => {
+      if (!data){ wrap.textContent = 'No completed matches yet.'; return; }
+      const entries = Object.values(data).sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 5);
+      if (!entries.length){ wrap.textContent = 'No completed matches yet.'; return; }
+      wrap.innerHTML = '';
+      wrap.className = '';
+      entries.forEach((entry) => {
+        const row = document.createElement('div');
+        row.className = 'completedRow';
+        const teams = document.createElement('span');
+        teams.textContent = (entry.teamA || 'Team A') + ' vs ' + (entry.teamB || 'Team B');
+        const score = document.createElement('span');
+        score.className = 'completedScore';
+        score.textContent = (entry.setsA || 0) + '-' + (entry.setsB || 0);
+        row.appendChild(teams);
+        row.appendChild(score);
+        wrap.appendChild(row);
+      });
+    }).catch(() => { wrap.textContent = 'Couldn\'t load completed matches.'; });
+  }
+  // ---- Courts ----
+  function loadCourtsList(){
+    const wrap = document.getElementById('courtsListWrap');
+    wrap.textContent = 'Loading…';
+    fetch(DB_URL + '/courts.json').then(r => r.json()).then((data) => {
+      wrap.innerHTML = '';
+      if (!data){ wrap.innerHTML = '<div class="receptionCardEmpty">No courts yet — add one below.</div>'; return; }
+      const entries = Object.entries(data).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0));
+      entries.forEach(([id, court]) => {
+        const row = document.createElement('div');
+        row.className = 'courtRow';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'courtRowName';
+        nameSpan.textContent = court.name || 'Unnamed court';
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'courtRowBtn';
+        renameBtn.textContent = 'Rename';
+        renameBtn.addEventListener('click', () => {
+          const newName = prompt('Rename court', court.name || '');
+          if (newName && newName.trim()){
+            firebasePut('/courts/' + id + '/name.json', newName.trim());
+            setTimeout(loadCourtsList, 300);
+          }
+        });
+        const delBtn = document.createElement('button');
+        delBtn.className = 'courtRowBtn courtRowDelete';
+        delBtn.textContent = '✕';
+        delBtn.addEventListener('click', () => {
+          if (confirm('Delete ' + (court.name || 'this court') + '?')){
+            firebaseDelete('/courts/' + id + '.json');
+            setTimeout(loadCourtsList, 300);
+          }
+        });
+        row.appendChild(nameSpan);
+        row.appendChild(renameBtn);
+        row.appendChild(delBtn);
+        wrap.appendChild(row);
+      });
+    }).catch(() => { wrap.textContent = 'Couldn\'t load courts.'; });
+  }
+  document.getElementById('addCourtBtn').addEventListener('click', () => {
+    const input = document.getElementById('newCourtName');
+    const name = input.value.trim();
+    if (!name) return;
+    firebasePut('/courts/' + genId() + '.json', {name: name, createdAt: Date.now()});
+    input.value = '';
+    setTimeout(loadCourtsList, 300);
+  });
+  document.getElementById('newCourtName').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('addCourtBtn').click();
+  });
   function switchReceptionPage(pageId){
     document.querySelectorAll('.receptionPage').forEach(p => p.classList.toggle('active', p.id === pageId));
     document.querySelectorAll('.receptionNavBtn').forEach(b => b.classList.toggle('active', b.dataset.page === pageId));
-    if (pageId === 'pageDashboard' || pageId === 'pageCourts') refreshDashboardActiveMatch();
+    if (pageId === 'pageDashboard'){ refreshDashboardActiveMatch(); refreshDashboardCompleted(); }
+    if (pageId === 'pageCourts') loadCourtsList();
   }
   document.getElementById('receptionNav').addEventListener('click', (e) => {
     const btn = e.target.closest('.receptionNavBtn');
@@ -2036,23 +2164,43 @@
     render(null);
     saveVoicePref();
   });
+  document.getElementById('settingsVoiceToggle').addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.voiceOn = !state.voiceOn;
+    render(null);
+    saveVoicePref();
+  });
 
   const voiceSetBtnsEl = document.getElementById('voiceSetBtns');
+  const settingsVoiceSetBtnsEl = document.getElementById('settingsVoiceSetBtns');
   function updateVoiceSetUI(){
-    [...voiceSetBtnsEl.children].forEach(b => {
-      b.classList.toggle('active', b.dataset.v === currentVoiceSet);
+    document.getElementById('voiceToggle').classList.toggle('on', state.voiceOn);
+    document.getElementById('settingsVoiceToggle').classList.toggle('on', state.voiceOn);
+    [voiceSetBtnsEl, settingsVoiceSetBtnsEl].forEach(el => {
+      [...el.children].forEach(b => {
+        b.classList.toggle('active', b.dataset.v === currentVoiceSet);
+      });
     });
   }
-  voiceSetBtnsEl.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-v]');
-    if (!btn) return;
-    e.stopPropagation();
-    currentVoiceSet = btn.dataset.v;
+  function selectVoiceSet(v){
+    currentVoiceSet = v;
     preloadVoiceSet(currentVoiceSet);
     preloadComboSet(currentVoiceSet);
     unlockClipSet(currentVoiceSet);
     updateVoiceSetUI();
     saveVoicePref();
+  }
+  voiceSetBtnsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-v]');
+    if (!btn) return;
+    e.stopPropagation();
+    selectVoiceSet(btn.dataset.v);
+  });
+  settingsVoiceSetBtnsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-v]');
+    if (!btn) return;
+    e.stopPropagation();
+    selectVoiceSet(btn.dataset.v);
   });
   updateVoiceSetUI();
 
