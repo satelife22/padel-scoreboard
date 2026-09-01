@@ -674,7 +674,6 @@
         <input type="text" id="newCourtName" placeholder="Court name (e.g. Court 3)" />
         <button id="addCourtBtn">Add Court</button>
       </div>
-      <p class="receptionNote">Courts you create here are stored permanently — code updates to the app never touch this data.</p>
     </div>
 
     <div class="receptionPage" id="pageSettings">
@@ -2298,12 +2297,14 @@
     e.stopPropagation();
     state.voiceOn = !state.voiceOn;
     render(null);
+    updateVoiceSetUI();
     saveVoicePref();
   });
   document.getElementById('settingsVoiceToggle').addEventListener('click', (e) => {
     e.stopPropagation();
     state.voiceOn = !state.voiceOn;
     render(null);
+    updateVoiceSetUI();
     saveVoicePref();
   });
 
