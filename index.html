@@ -26,6 +26,18 @@
     overscroll-behavior:none;
     touch-action:manipulation;
   }
+  /* The live scoreboard is hidden by default and only revealed once we've
+     genuinely decided to show it (a real umpire/view link, or admin's
+     "View Full Scoreboard" popout) — otherwise it flashes on screen for a
+     moment on every load/refresh while the login/dashboard check resolves. */
+  #app, #timerBar, #clockBar, #voiceUnlockBanner, #miniTable, #undoBtn, #settingsBtn{
+    visibility:hidden;
+  }
+  body.show-scoreboard #app, body.show-scoreboard #timerBar, body.show-scoreboard #clockBar,
+  body.show-scoreboard #voiceUnlockBanner, body.show-scoreboard #miniTable,
+  body.show-scoreboard #undoBtn, body.show-scoreboard #settingsBtn{
+    visibility:visible;
+  }
   #app{
     position:fixed; inset:0;
     display:flex; flex-direction:row;
@@ -381,6 +393,38 @@
     display:none;
   }
   #adminDashboard.show{ display:flex; }
+  #adminMatchConsole{
+    position:fixed; inset:0; z-index:190;
+    background:var(--bg); color:var(--net);
+    display:none;
+  }
+  #adminMatchConsole.show{ display:flex; }
+  .consoleControls{
+    width:320px; flex-shrink:0; box-sizing:border-box;
+    background:rgba(0,0,0,0.25); border-right:1px solid rgba(242,239,230,0.1);
+    display:flex; flex-direction:column; gap:16px; overflow-y:auto;
+    padding: max(20px, env(safe-area-inset-top)) 18px 18px;
+  }
+  .consoleControls .receptionCard{ gap:8px; }
+  .consoleControls button{
+    display:block; width:100%;
+    padding:11px; border-radius:10px; border:none; cursor:pointer;
+    font-family:'Barlow Condensed', sans-serif; font-weight:700; letter-spacing:.05em; text-transform:uppercase; font-size:13px;
+  }
+  #consoleBackBtn{ flex-shrink:0; }
+  .consolePreview{
+    flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:20px; padding:24px;
+  }
+  #consolePreviewCard{ width:100%; max-width:420px; text-align:center; }
+  .consolePreviewTeams{ font-size:20px; font-weight:800; margin-top:6px; }
+  .consolePreviewScore{ font-size:48px; font-weight:800; font-family:'Archivo Black', sans-serif; margin:6px 0; }
+  #consolePreviewMini{ font-size:14px; opacity:.7; margin-bottom:4px; }
+  #consoleFullscreenLink{
+    display:inline-block; text-decoration:none; text-align:center;
+    padding:11px 20px; border-radius:10px;
+    font-family:'Barlow Condensed', sans-serif; font-weight:700; letter-spacing:.05em; text-transform:uppercase; font-size:13px;
+  }
   .receptionSidebar{
     width:220px; flex-shrink:0; box-sizing:border-box;
     background:rgba(0,0,0,0.25); border-right:1px solid rgba(242,239,230,0.1);
@@ -723,12 +767,52 @@
         </div>
       </div>
 
-      <p class="receptionNote">Umpire and view-only links for a match are shown once you open or start it, under that match's own Settings panel.</p>
+      <p class="receptionNote">Umpire and view-only links for a match are shown once you open or start it, in that match's console.</p>
     </div>
 
   </div>
 </div>
 
+<div id="adminMatchConsole">
+  <div class="consoleControls">
+    <button id="consoleBackBtn" class="ghostBtn">← Back to Dashboard</button>
+
+    <div class="receptionCard">
+      <div class="receptionCardLabel">Score Controls</div>
+      <button id="consoleUndoBtn" class="ghostBtn">Undo</button>
+      <button id="consolePauseBtn" class="ghostBtn">Pause / Resume</button>
+    </div>
+
+    <div class="receptionCard">
+      <div class="receptionCardLabel">Match</div>
+      <button id="consoleNewGameBtn" class="ghostBtn">Start New Game</button>
+      <button id="consoleResetBtn" class="ghostBtn">Restart Match</button>
+      <button id="consoleEndGameBtn" class="dangerBtn">End Game</button>
+      <button id="consoleHistoryBtn" class="ghostBtn">Match History</button>
+    </div>
+
+    <div class="receptionCard">
+      <div class="receptionCardLabel">Share Links</div>
+      <div class="setupLabel">Umpire (full control)</div>
+      <div id="consoleUmpireLink" class="cardDetail"></div>
+      <button id="consoleCopyUmpireBtn" class="ghostBtn">Copy Umpire Link</button>
+      <div class="setupLabel" style="margin-top:10px;">View only</div>
+      <div id="consoleViewLink" class="cardDetail"></div>
+      <button id="consoleCopyViewBtn" class="ghostBtn">Copy View-Only Link</button>
+    </div>
+  </div>
+
+  <div class="consolePreview">
+    <div class="receptionCard" id="consolePreviewCard">
+      <div class="cardCourtBadge" id="consoleCourtBadge">Court 1</div>
+      <div id="consolePreviewTeams" class="consolePreviewTeams">TEAM A vs TEAM B</div>
+      <div id="consolePreviewScore" class="consolePreviewScore">0 - 0</div>
+      <div id="consolePreviewMini"></div>
+      <div id="consolePreviewTimer" class="cardDetail"></div>
+    </div>
+    <a id="consoleFullscreenLink" class="ghostBtn" target="_blank" rel="noopener">View Full Scoreboard ↗</a>
+  </div>
+</div>
 
 <div id="app">
   <div class="half a" id="halfA">
@@ -1405,14 +1489,58 @@
   document.getElementById('dashboardOpenBtn').addEventListener('click', async () => {
     hideAdminDashboard();
     await initialiseApp();
+    showAdminMatchConsole();
   });
   async function startNewGameFromReception(){
     hideAdminDashboard();
     await initialiseApp();
+    showAdminMatchConsole();
     document.getElementById('newGameBtn').click();
   }
   document.getElementById('dashboardNewBtn').addEventListener('click', startNewGameFromReception);
   document.getElementById('matchesNewBtn').addEventListener('click', startNewGameFromReception);
+
+  // ---- Admin Match Console ----
+  // Admin never sees the real fullscreen scoreboard directly — instead a compact
+  // live preview sits alongside full controls, with a link to pop the actual
+  // fullscreen view open in a new tab if they want to see it exactly as the
+  // umpire/spectators do.
+  function renderConsolePreview(){
+    const card = document.getElementById('consolePreviewCard');
+    if (!card) return;
+    document.getElementById('consolePreviewTeams').textContent = (state.names.a || 'TEAM A') + ' vs ' + (state.names.b || 'TEAM B');
+    document.getElementById('consolePreviewScore').textContent = displayPts('a') + '  –  ' + displayPts('b');
+    const cols = buildMiniColumns();
+    document.getElementById('consolePreviewMini').textContent = 'Sets: ' + cols.map(c => c.a + '-' + c.b).join('  ');
+    const mins = Math.floor(elapsedMatchMs() / 60000);
+    document.getElementById('consolePreviewTimer').textContent = state.paused ? 'Paused · ' + mins + ' min' : mins + ' min played';
+  }
+  function showAdminMatchConsole(){
+    document.getElementById('adminMatchConsole').classList.add('show');
+    document.getElementById('consoleUmpireLink').textContent = shareUrl;
+    document.getElementById('consoleViewLink').textContent = viewUrl;
+    document.getElementById('consoleFullscreenLink').href = shareUrl;
+    renderConsolePreview();
+  }
+  function hideAdminMatchConsole(){
+    document.getElementById('adminMatchConsole').classList.remove('show');
+  }
+  document.getElementById('consoleBackBtn').addEventListener('click', () => {
+    hideAdminMatchConsole();
+    showAdminDashboard();
+  });
+  document.getElementById('consoleUndoBtn').addEventListener('click', () => { undoRemote(); });
+  document.getElementById('consolePauseBtn').addEventListener('click', () => { togglePause(); });
+  document.getElementById('consoleNewGameBtn').addEventListener('click', () => { document.getElementById('newGameBtn').click(); });
+  document.getElementById('consoleResetBtn').addEventListener('click', () => { document.getElementById('resetMatch').click(); });
+  document.getElementById('consoleEndGameBtn').addEventListener('click', () => { document.getElementById('endGameBtn').click(); });
+  document.getElementById('consoleHistoryBtn').addEventListener('click', () => {
+    document.getElementById('historyModal').classList.add('show');
+    loadHistory();
+  });
+  document.getElementById('consoleCopyUmpireBtn').addEventListener('click', (e) => { copyToClipboard(shareUrl, e.currentTarget); });
+  document.getElementById('consoleCopyViewBtn').addEventListener('click', (e) => { copyToClipboard(viewUrl, e.currentTarget); });
+
   document.getElementById('dashboardLogoutBtn').addEventListener('click', () => {
     fbAuth.signOut();
   });
@@ -2213,6 +2341,7 @@
     });
 
     document.getElementById('voiceToggle').classList.toggle('on', state.voiceOn);
+    renderConsolePreview();
 
     persist();
   }
@@ -3094,6 +3223,7 @@
   // chooses "Open Current Match" or "Start New Game" from the dashboard instead —
   // see the dashboard button handlers above, which call initialiseApp() themselves.
   if (isViewOnlyLink || umpireTokenFromURL){
+    document.body.classList.add('show-scoreboard');
     initialiseApp();
   }
 })();
