@@ -435,7 +435,8 @@
     padding:12px; border-radius:10px; border:none; cursor:pointer;
     font-family:'Barlow Condensed', sans-serif; font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:14px;
   }
-  .scheduledCard{ max-width:260px; }
+  .scheduledCard{ max-width:460px; }
+  .scheduledTeams{ padding-right:70px; }
   .scheduledCard .cardDetail{ margin-top:2px; }
   .scheduledCancelBtn{
     background:rgba(255,107,107,0.12); color:#FF6B6B; border:none; border-radius:8px;
@@ -666,7 +667,6 @@
 
       <div class="receptionSection">
         <h2>Scheduled</h2>
-        <button id="openScheduleBtn" class="ghostBtn" style="max-width:220px; display:block; margin-bottom:14px;">+ Schedule Match</button>
         <div class="receptionCardGrid" id="scheduledListWrap">
           <div class="receptionCard"><div class="receptionCardEmpty">No matches scheduled.</div></div>
         </div>
@@ -683,6 +683,7 @@
     <div class="receptionPage" id="pageMatches">
       <h1>Matches</h1>
       <button id="matchesNewBtn">Start New Game</button>
+      <button id="openScheduleBtn" class="ghostBtn" style="max-width:220px; display:block; margin-bottom:20px;">+ Schedule Match</button>
 
       <div class="receptionSection">
         <h2>Search by Date</h2>
@@ -1283,6 +1284,7 @@
         badge.textContent = sched.courtName || 'Court —';
         card.appendChild(badge);
         const teams = document.createElement('div');
+        teams.className = 'scheduledTeams';
         teams.textContent = (sched.teamA || 'Team A') + ' vs ' + (sched.teamB || 'Team B');
         card.appendChild(teams);
         const when = document.createElement('div');
