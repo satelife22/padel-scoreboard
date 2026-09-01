@@ -3209,22 +3209,34 @@
   }
 
   document.addEventListener('click', () => { requestWakeLock(); unlockVoice(); }, { once: true, capture: true });
+  function scoreboardSyncIsRelevant(){
+    if (isViewOnlyLink || umpireTokenFromURL) return true;
+    const console = document.getElementById('adminMatchConsole');
+    return !!(console && console.classList.contains('show'));
+  }
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible'){
       requestWakeLock();
       // iOS aggressively suspends a backgrounded tab's live connections — coming back
       // into view is exactly when a Watch command (or another device starting a new
       // match) is most likely to have been missed, so check /activeMatchId first.
-      subscribeToActiveMatch();
-      checkForCurrentActiveMatch();
-      retryPendingWrites();
+      // But this background sync can reveal the "Ready to Play?" prompt, so it must
+      // only run when the live scoreboard is actually what should be on screen —
+      // never while admin is sitting on the dashboard/settings/matches pages.
+      if (scoreboardSyncIsRelevant()){
+        subscribeToActiveMatch();
+        checkForCurrentActiveMatch();
+        retryPendingWrites();
+      }
     }
   });
   window.addEventListener('pageshow', () => {
     // Safe on a normal load too — subscribeToMatch/subscribeToActiveMatch always
     // close any previous stream first, so this can't create duplicate connections.
-    subscribeToActiveMatch();
-    checkForCurrentActiveMatch();
+    if (scoreboardSyncIsRelevant()){
+      subscribeToActiveMatch();
+      checkForCurrentActiveMatch();
+    }
   });
 
   // Show the unlock prompt only if voice is on and this device hasn't been tapped yet.
