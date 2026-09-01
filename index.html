@@ -327,6 +327,24 @@
   #loginLogo{ display:block; width:100%; max-width:280px; margin:0 auto 8px; }
   #loginScreen h2{ text-align:center; margin:0 0 24px; }
   #loginScreen .panel{ background:#8B3916; border-color:rgba(255,255,255,0.15); }
+
+  #adminDashboard{
+    position:fixed; inset:0; z-index:190;
+    background:rgba(6,12,10,0.97);
+    display:none; align-items:center; justify-content:center;
+    padding: 20px 16px;
+  }
+  #adminDashboard.show{ display:flex; }
+  #dashboardLogo{ display:block; width:100%; max-width:220px; margin:0 auto 8px; }
+  #adminDashboard h2{ text-align:center; margin:0 0 20px; }
+  #dashboardActiveMatch{
+    text-align:center; font-size:15px; line-height:1.5; opacity:.85;
+    background:rgba(242,239,230,0.06); border-radius:12px; padding:16px;
+    margin-bottom:20px; min-height:20px;
+  }
+  #dashboardOpenBtn{ background:var(--net); color:#101816; }
+  #dashboardNewBtn{ background:rgba(242,239,230,0.12) !important; color:var(--net) !important; border:1px solid rgba(242,239,230,0.25); }
+  #dashboardLogoutBtn{ background:rgba(255,107,107,0.15) !important; color:#FF6B6B !important; font-size:14px; }
   #loginScreen input{
     width:100%; box-sizing:border-box; background:rgba(242,239,230,0.08);
     border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
@@ -482,6 +500,23 @@
     <div id="loginError"></div>
     <div class="panelBtns">
       <button id="loginSubmitBtn">Log In</button>
+    </div>
+  </div>
+</div>
+
+<div id="adminDashboard">
+  <div class="panel">
+    <img id="dashboardLogo" src="images/recess-logo-transparent.png" alt="Recess Padel Club" />
+    <h2>Reception</h2>
+    <div id="dashboardActiveMatch">Checking for a match in progress…</div>
+    <div class="panelBtns">
+      <button id="dashboardOpenBtn" class="ghostBtn">Open Current Match</button>
+    </div>
+    <div class="panelBtns">
+      <button id="dashboardNewBtn">Start New Game</button>
+    </div>
+    <div class="panelBtns">
+      <button id="dashboardLogoutBtn" class="ghostBtn">Log Out</button>
     </div>
   </div>
 </div>
@@ -791,14 +826,41 @@
   function hideLoginScreen(){
     document.getElementById('loginScreen').classList.remove('show');
   }
+  function showAdminDashboard(){
+    document.getElementById('adminDashboard').classList.add('show');
+    const box = document.getElementById('dashboardActiveMatch');
+    box.textContent = 'Checking for a match in progress…';
+    getCurrentActiveMatch().then((active) => {
+      if (active && active.state){
+        const s = active.state;
+        const names = (s.names && s.names.a && s.names.b) ? (s.names.a + ' vs ' + s.names.b) : 'Match in progress';
+        const score = s.games ? (' — ' + s.games.a + '-' + s.games.b) : '';
+        box.textContent = names + score;
+        document.getElementById('dashboardOpenBtn').style.display = '';
+      } else {
+        box.textContent = 'No match currently in progress.';
+        document.getElementById('dashboardOpenBtn').style.display = 'none';
+      }
+    });
+  }
+  function hideAdminDashboard(){
+    document.getElementById('adminDashboard').classList.remove('show');
+  }
 
-  // Link-based visitors (umpire/view) never see the login screen, regardless of
-  // whether this browser happens to also be signed in as the club elsewhere.
+  // Link-based visitors (umpire/view) never see the login screen or dashboard,
+  // regardless of whether this browser happens to also be signed in as the club
+  // elsewhere — they go straight to their match via initialiseApp() below.
   if (!isViewOnlyLink && !umpireTokenFromURL){
     fbAuth.onAuthStateChanged(function(user){
       appRole = user ? 'admin' : null;
       applyRoleClasses();
-      if (user) hideLoginScreen(); else showLoginScreen();
+      if (user){
+        hideLoginScreen();
+        showAdminDashboard();
+      } else {
+        hideAdminDashboard();
+        showLoginScreen();
+      }
     });
   } else {
     applyRoleClasses();
@@ -815,6 +877,18 @@
   });
   document.getElementById('loginPassword').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('loginSubmitBtn').click();
+  });
+  document.getElementById('dashboardOpenBtn').addEventListener('click', async () => {
+    hideAdminDashboard();
+    await initialiseApp();
+  });
+  document.getElementById('dashboardNewBtn').addEventListener('click', async () => {
+    hideAdminDashboard();
+    await initialiseApp();
+    document.getElementById('newGameBtn').click();
+  });
+  document.getElementById('dashboardLogoutBtn').addEventListener('click', () => {
+    fbAuth.signOut();
   });
 
   // ---- Retry-safe Firebase writes ----
@@ -2467,7 +2541,12 @@
     }
   }
 
-  initialiseApp();
+  // Umpire and view-only links go straight into their match. Admin (reception)
+  // chooses "Open Current Match" or "Start New Game" from the dashboard instead —
+  // see the dashboard button handlers above, which call initialiseApp() themselves.
+  if (isViewOnlyLink || umpireTokenFromURL){
+    initialiseApp();
+  }
 })();
 </script>
 </body>
