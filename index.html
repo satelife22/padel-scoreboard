@@ -319,23 +319,22 @@
   /* Club login — reception/admin only. Umpire and view-only links never show this. */
   #loginScreen{
     position:fixed; inset:0; z-index:200;
-    background:#8B3916;
+    background:rgba(6,12,10,0.97);
     display:none; align-items:center; justify-content:center;
     padding: 20px 16px;
   }
   #loginScreen.show{ display:flex; }
-  #loginScreen .panel{ background:rgba(0,0,0,0.18); border-color:rgba(255,255,255,0.18); }
-  #loginLogo{ display:block; width:100%; max-width:280px; margin:0 auto 26px; }
+  #loginLogo{ display:block; width:100%; max-width:280px; margin:0 auto 8px; }
+  #loginScreen h2{ text-align:center; margin:0 0 24px; }
   #loginScreen input{
-    width:100%; box-sizing:border-box; background:rgba(255,255,255,0.12);
-    border:1px solid rgba(255,255,255,0.25); border-radius:10px; color:#FFF6EC;
+    width:100%; box-sizing:border-box; background:rgba(242,239,230,0.08);
+    border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
     font-size:16px; padding:14px; margin-bottom:12px; font-family:inherit;
   }
-  #loginScreen input::placeholder{ color:rgba(255,246,236,0.6); }
   #loginError{
-    color:#FFD166; font-size:14px; min-height:18px; margin-bottom:4px;
+    color:#FF6B6B; font-size:14px; min-height:18px; margin-bottom:4px;
   }
-  #loginSubmitBtn{ background:#FFF6EC; color:#8B3916; width:100%; }
+  #loginSubmitBtn{ background:var(--net); color:#101816; width:100%; }
 
   /* Role-based access. Default (logged out, no link params) = nothing usable. */
   body.role-view #undoBtn,
@@ -475,7 +474,8 @@
 
 <div id="loginScreen">
   <div class="panel">
-    <img id="loginLogo" src="images/recess-logo.png" alt="Recess Padel Club" />
+    <img id="loginLogo" src="images/recess-logo-transparent.png" alt="Recess Padel Club" />
+    <h2>Club Login</h2>
     <input type="email" id="loginEmail" placeholder="Email" autocomplete="username" />
     <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" />
     <div id="loginError"></div>
