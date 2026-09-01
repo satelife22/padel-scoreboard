@@ -364,8 +364,13 @@
     display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:16px;
   }
   .receptionCard{
+    position:relative;
     background:#101E19; border:1px solid rgba(242,239,230,0.12); border-radius:14px;
     padding:18px; display:flex; flex-direction:column; gap:10px;
+  }
+  .cardCourtBadge{
+    position:absolute; top:16px; right:18px;
+    font-size:13px; font-weight:800; letter-spacing:.03em; color:#8B3916;
   }
   .receptionCardLabel{ font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; opacity:.55; }
   .receptionCardEmpty{ font-size:14px; opacity:.5; }
@@ -412,11 +417,9 @@
   }
   .courtRowDelete{ background:rgba(255,107,107,0.15); color:#FF6B6B; }
   .completedRow{
-    display:flex; flex-direction:column; gap:6px;
-    background:#101E19; border:1px solid rgba(242,239,230,0.12); border-radius:12px;
-    padding:12px 16px; margin-bottom:8px; max-width:520px; font-size:14px;
+    gap:6px; padding:14px 16px; margin-bottom:10px; max-width:520px; font-size:14px;
   }
-  .completedTop{ display:flex; justify-content:space-between; gap:12px; }
+  .completedTop{ display:flex; justify-content:space-between; gap:12px; padding-right:70px; }
   .completedRow .completedScore{ opacity:.7; }
   .cardDetail{ font-size:13px; opacity:.6; }
   #loginScreen input{
@@ -603,6 +606,7 @@
         <h2>Active Games</h2>
         <div class="receptionCardGrid" id="dashboardActiveWrap">
           <div class="receptionCard" id="dashboardActiveCard">
+            <div class="cardCourtBadge" id="dashboardActiveCourtBadge" style="display:none;">Court 1</div>
             <div id="dashboardActiveMatch">Checking for a match in progress…</div>
             <button id="dashboardOpenBtn" class="ghostBtn" style="display:none;">Open Current Match</button>
           </div>
@@ -977,7 +981,9 @@
   }
   function refreshDashboardActiveMatch(){
     const box = document.getElementById('dashboardActiveMatch');
+    const badge = document.getElementById('dashboardActiveCourtBadge');
     box.innerHTML = 'Checking for a match in progress…';
+    badge.style.display = 'none';
     getCurrentActiveMatch().then((active) => {
       if (active && active.state){
         const s = active.state;
@@ -987,9 +993,10 @@
         if (typeof s.startTime === 'number' && s.startTime > 0 && s.startTime <= Date.now() + 60000){
           const mins = Math.max(0, Math.round((Date.now() - s.startTime - (s.totalPausedMs || 0)) / 60000));
           const startStr = new Date(s.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-          detail = '<div class="cardDetail">Court 1 &nbsp;·&nbsp; ' + mins + ' min played &nbsp;·&nbsp; started ' + startStr + '</div>';
+          detail = '<div class="cardDetail">' + mins + ' min played &nbsp;·&nbsp; started ' + startStr + '</div>';
         }
         box.innerHTML = '<div>' + names + score + '</div>' + detail;
+        badge.style.display = '';
         document.getElementById('dashboardOpenBtn').style.display = '';
       } else {
         box.textContent = 'No match currently in progress.';
@@ -1008,7 +1015,11 @@
       wrap.className = '';
       entries.forEach((entry) => {
         const row = document.createElement('div');
-        row.className = 'completedRow';
+        row.className = 'receptionCard completedRow';
+        const badge = document.createElement('div');
+        badge.className = 'cardCourtBadge';
+        badge.textContent = 'Court 1';
+        row.appendChild(badge);
         const top = document.createElement('div');
         top.className = 'completedTop';
         const teams = document.createElement('span');
@@ -1025,7 +1036,7 @@
           const startStr = new Date(entry.ts - mins * 60000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
           const detail = document.createElement('div');
           detail.className = 'cardDetail';
-          detail.textContent = 'Court 1 · ' + mins + ' min · ' + startStr + '–' + endStr;
+          detail.textContent = mins + ' min · ' + startStr + '–' + endStr;
           row.appendChild(detail);
         }
         wrap.appendChild(row);
