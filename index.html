@@ -233,6 +233,23 @@
     padding: 20px 16px;
   }
   #dayDetailModal.show{ display:flex; }
+  #scheduleMatchModal{
+    position:fixed; inset:0; z-index:210;
+    background:rgba(6,12,10,0.94);
+    display:none; align-items:center; justify-content:center;
+    padding: 20px 16px;
+  }
+  #scheduleMatchModal.show{ display:flex; }
+  #scheduleMatchModal input[type="text"], #scheduleMatchModal select,
+  #scheduleMatchModal input[type="date"], #scheduleMatchModal input[type="time"]{
+    width:100%; box-sizing:border-box; background:rgba(242,239,230,0.08);
+    border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
+    font-size:15px; padding:12px 14px; margin-bottom:12px; font-family:inherit;
+  }
+  #scheduleMatchModal select option{ background:#101E19; color:var(--net); }
+  #scheduleDate, #scheduleTime{ display:inline-block; width:calc(50% - 5px); }
+  #scheduleDate{ margin-right:10px; }
+  #scheduleError{ color:#FF6B6B; font-size:13px; min-height:16px; margin-bottom:4px; }
   #dayDetailBody{ overflow-y:auto; margin:14px 0 18px; max-height:60vh; }
   #dayDetailBody .receptionCard{ margin-bottom:10px; }
   .historyPanel{ margin:0; width:min(92vw, 460px); max-height:80vh; display:flex; flex-direction:column; }
@@ -418,6 +435,16 @@
     border:1px solid rgba(242,239,230,0.22);
   }
   #matchesNewBtn, #matchesHistoryBtn{ max-width:280px; }
+  #openScheduleBtn{
+    padding:12px; border-radius:10px; border:none; cursor:pointer;
+    font-family:'Barlow Condensed', sans-serif; font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:14px;
+  }
+  .scheduledCard{ max-width:260px; }
+  .scheduledCard .cardDetail{ margin-top:2px; }
+  .scheduledCancelBtn{
+    background:rgba(255,107,107,0.12); color:#FF6B6B; border:none; border-radius:8px;
+    padding:8px 12px; font-family:inherit; font-size:13px; cursor:pointer; margin-top:6px;
+  }
   .dashboardQuickActions{ max-width:480px; margin-bottom:32px; }
   .receptionSection{ margin-bottom:30px; }
   .receptionSection h2{
@@ -645,8 +672,9 @@
 
       <div class="receptionSection">
         <h2>Scheduled</h2>
-        <div class="receptionCard" style="max-width:420px;">
-          <div class="receptionCardEmpty">Match scheduling isn't set up yet.</div>
+        <button id="openScheduleBtn" class="ghostBtn" style="max-width:220px; display:block; margin-bottom:14px;">+ Schedule Match</button>
+        <div class="receptionCardGrid" id="scheduledListWrap">
+          <div class="receptionCardEmpty">No matches scheduled.</div>
         </div>
       </div>
 
@@ -857,6 +885,28 @@
     <div id="dayDetailBody"></div>
     <div class="panelBtns">
       <button id="closeDayDetail">Done</button>
+    </div>
+  </div>
+</div>
+
+<div id="scheduleMatchModal">
+  <div class="panel">
+    <h2>Schedule Match</h2>
+    <input type="text" id="scheduleTeamA" placeholder="Team A (e.g. Josh/Mus)" />
+    <input type="text" id="scheduleTeamB" placeholder="Team B (e.g. Toby/DT37)" />
+    <div class="setupGroup">
+      <div class="setupLabel">Court</div>
+      <select id="scheduleCourt"></select>
+    </div>
+    <div class="setupGroup">
+      <div class="setupLabel">Date &amp; time</div>
+      <input type="date" id="scheduleDate" />
+      <input type="time" id="scheduleTime" />
+    </div>
+    <div id="scheduleError"></div>
+    <div class="panelBtns">
+      <button id="cancelScheduleBtn" class="ghostBtn">Cancel</button>
+      <button id="saveScheduleBtn">Save</button>
     </div>
   </div>
 </div>
@@ -1196,10 +1246,100 @@
     document.getElementById('dayDetailModal').classList.remove('show');
   });
 
+  // ---- Scheduled matches ----
+  function refreshScheduledList(){
+    const wrap = document.getElementById('scheduledListWrap');
+    wrap.textContent = 'Loading…';
+    fetch(DB_URL + '/scheduled.json').then(r => r.json()).then((data) => {
+      if (!data){ wrap.innerHTML = '<div class="receptionCardEmpty">No matches scheduled.</div>'; return; }
+      const entries = Object.entries(data).sort((a, b) => (a[1].startTime || 0) - (b[1].startTime || 0));
+      if (!entries.length){ wrap.innerHTML = '<div class="receptionCardEmpty">No matches scheduled.</div>'; return; }
+      wrap.innerHTML = '';
+      entries.forEach(([id, sched]) => {
+        const card = document.createElement('div');
+        card.className = 'receptionCard scheduledCard';
+        const badge = document.createElement('div');
+        badge.className = 'cardCourtBadge';
+        badge.textContent = sched.courtName || 'Court —';
+        card.appendChild(badge);
+        const teams = document.createElement('div');
+        teams.textContent = (sched.teamA || 'Team A') + ' vs ' + (sched.teamB || 'Team B');
+        card.appendChild(teams);
+        const when = document.createElement('div');
+        when.className = 'cardDetail';
+        when.textContent = sched.startTime
+          ? new Date(sched.startTime).toLocaleString([], {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})
+          : 'No time set';
+        card.appendChild(when);
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'scheduledCancelBtn';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', () => {
+          if (confirm('Cancel this scheduled match?')){
+            firebaseDelete('/scheduled/' + id + '.json');
+            setTimeout(refreshScheduledList, 300);
+          }
+        });
+        card.appendChild(cancelBtn);
+        wrap.appendChild(card);
+      });
+    }).catch(() => { wrap.innerHTML = '<div class="receptionCardEmpty">Couldn\'t load scheduled matches.</div>'; });
+  }
+  function openScheduleModal(){
+    document.getElementById('scheduleTeamA').value = '';
+    document.getElementById('scheduleTeamB').value = '';
+    document.getElementById('scheduleError').textContent = '';
+    const now = new Date();
+    document.getElementById('scheduleDate').value = now.toISOString().slice(0, 10);
+    document.getElementById('scheduleTime').value = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const courtSel = document.getElementById('scheduleCourt');
+    courtSel.innerHTML = '<option value="">Loading courts…</option>';
+    fetch(DB_URL + '/courts.json').then(r => r.json()).then((data) => {
+      courtSel.innerHTML = '';
+      if (!data){
+        courtSel.innerHTML = '<option value="">No courts set up yet</option>';
+        return;
+      }
+      Object.entries(data).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0)).forEach(([id, court]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = court.name || 'Unnamed court';
+        courtSel.appendChild(opt);
+      });
+    }).catch(() => { courtSel.innerHTML = '<option value="">Couldn\'t load courts</option>'; });
+    document.getElementById('scheduleMatchModal').classList.add('show');
+  }
+  document.getElementById('openScheduleBtn').addEventListener('click', openScheduleModal);
+  document.getElementById('cancelScheduleBtn').addEventListener('click', () => {
+    document.getElementById('scheduleMatchModal').classList.remove('show');
+  });
+  document.getElementById('saveScheduleBtn').addEventListener('click', () => {
+    const teamA = document.getElementById('scheduleTeamA').value.trim();
+    const teamB = document.getElementById('scheduleTeamB').value.trim();
+    const dateVal = document.getElementById('scheduleDate').value;
+    const timeVal = document.getElementById('scheduleTime').value;
+    const courtSel = document.getElementById('scheduleCourt');
+    const courtId = courtSel.value;
+    const courtName = courtSel.options[courtSel.selectedIndex] ? courtSel.options[courtSel.selectedIndex].textContent : '';
+    const errBox = document.getElementById('scheduleError');
+    if (!teamA || !teamB){ errBox.textContent = 'Enter both team names.'; return; }
+    if (!dateVal || !timeVal){ errBox.textContent = 'Pick a date and time.'; return; }
+    if (!courtId){ errBox.textContent = 'Pick a court.'; return; }
+    const startTime = new Date(dateVal + 'T' + timeVal).getTime();
+    if (!startTime || isNaN(startTime)){ errBox.textContent = 'Invalid date/time.'; return; }
+    errBox.textContent = '';
+    firebasePut('/scheduled/' + genId() + '.json', {
+      teamA: teamA, teamB: teamB, startTime: startTime,
+      courtId: courtId, courtName: courtName, createdAt: Date.now()
+    });
+    document.getElementById('scheduleMatchModal').classList.remove('show');
+    setTimeout(refreshScheduledList, 300);
+  });
+
   function switchReceptionPage(pageId){
     document.querySelectorAll('.receptionPage').forEach(p => p.classList.toggle('active', p.id === pageId));
     document.querySelectorAll('.receptionNavBtn').forEach(b => b.classList.toggle('active', b.dataset.page === pageId));
-    if (pageId === 'pageDashboard'){ refreshDashboardActiveMatch(); refreshDashboardCompleted(); renderCalendar(); }
+    if (pageId === 'pageDashboard'){ refreshDashboardActiveMatch(); refreshDashboardCompleted(); renderCalendar(); refreshScheduledList(); }
     if (pageId === 'pageCourts') loadCourtsList();
   }
   document.getElementById('receptionNav').addEventListener('click', (e) => {
