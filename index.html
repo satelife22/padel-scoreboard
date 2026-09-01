@@ -506,7 +506,7 @@
     font-family:'Barlow Condensed', sans-serif; font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:14px;
   }
   #dashboardOpenBtn{ background:var(--net); color:#101816; }
-  #dashboardNewBtn, #matchesNewBtn{ background:var(--net); color:#101816; }
+  #matchesNewBtn{ background:var(--net); color:#101816; }
   #matchesNewBtn{ max-width:280px; margin-bottom:20px; }
   #openScheduleBtn{
     padding:12px; border-radius:10px; border:none; cursor:pointer;
@@ -530,6 +530,63 @@
     font-size:13px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;
     opacity:.55; margin:0 0 12px;
   }
+
+  /* Today summary bar */
+  .todaySummaryBar{
+    background:#101E19; border:1px solid rgba(242,239,230,0.12); border-radius:14px;
+    padding:16px 20px; margin-bottom:28px; display:flex; flex-wrap:wrap;
+    align-items:baseline; gap:6px 16px;
+  }
+  .todaySummaryDate{
+    font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; opacity:.55;
+  }
+  .todaySummaryStats{ font-size:16px; font-weight:700; }
+
+  /* Active Now cards */
+  .activeNowCard{ gap:6px; }
+  .activeCardHeader{ display:flex; align-items:center; justify-content:space-between; }
+  .activeCardCourt{ font-size:13px; font-weight:800; letter-spacing:.06em; color:var(--brand); }
+  .activeCardLive{
+    display:flex; align-items:center; gap:6px; font-size:11px; font-weight:800; letter-spacing:.08em;
+    color:#FF6B6B;
+  }
+  .liveDot{ width:7px; height:7px; border-radius:50%; background:#FF6B6B; }
+  .activeCardTeams{ font-size:16px; font-weight:700; margin-top:2px; }
+  .activeCardScore{ font-size:32px; font-weight:800; font-family:'Archivo Black', sans-serif; }
+
+  /* Court Status */
+  .courtStatusCard{ max-width:520px; gap:0; padding:6px 18px; }
+  .courtStatusRow{
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    padding:12px 0; border-top:1px solid rgba(242,239,230,0.1); font-size:14px;
+  }
+  .courtStatusRow:first-child{ border-top:none; }
+  .courtStatusName{ font-weight:700; }
+  .courtStatusText{ opacity:.75; text-align:right; }
+  .courtStatusText.courtStatusBusy{ color:#FF6B6B; opacity:1; }
+  .courtStatusText.courtStatusScheduled{ color:var(--brand); opacity:1; }
+  .courtStatusText.courtStatusFree{ color:#8FE3A0; opacity:1; }
+
+  /* Two-column Scheduled Today / Completed Today */
+  .dashboardTwoCol{ display:grid; grid-template-columns:1fr 1fr; gap:30px; }
+  .dashboardViewAllBtn{
+    display:block; width:auto; margin-top:10px; padding:8px 0; background:transparent !important;
+    text-align:left; text-transform:none; letter-spacing:normal; font-weight:600; font-size:14px;
+  }
+  @media (max-width: 900px){
+    .dashboardTwoCol{ grid-template-columns:1fr; }
+  }
+
+  /* Matches page primary action */
+  .matchesPrimaryBtn{
+    display:block; width:100%; max-width:320px; margin-bottom:14px;
+    padding:14px; border-radius:10px; border:none; cursor:pointer;
+    background:var(--net); color:#101816;
+    font-family:'Barlow Condensed', sans-serif; font-weight:800; letter-spacing:.06em; text-transform:uppercase; font-size:16px;
+  }
+  .matchesSecondaryActions{ display:flex; gap:10px; margin-bottom:24px; max-width:520px; }
+  .matchesSecondaryActions button{ flex:1; width:auto; }
+
   .courtAddRow{ display:flex; gap:10px; max-width:480px; margin-top:16px; }
   input[type="color"]{
     width:100%; height:44px; border:1px solid rgba(242,239,230,0.2); border-radius:10px;
@@ -770,37 +827,58 @@
     <div class="receptionPage active" id="pageDashboard">
       <h1>Dashboard</h1>
 
-      <div class="panelBtns dashboardQuickActions">
-        <button id="dashboardNewBtn">Start New Game</button>
+      <div class="todaySummaryBar" id="todaySummaryBar">
+        <div class="todaySummaryDate" id="todaySummaryDate">Today</div>
+        <div class="todaySummaryStats" id="todaySummaryStats">Loading…</div>
       </div>
 
       <div class="receptionSection">
-        <h2>Active Games</h2>
+        <h2>Active Now</h2>
         <div class="receptionCardGrid" id="dashboardActiveWrap">
           <div class="receptionCard"><div class="receptionCardEmpty">Checking for matches in progress…</div></div>
         </div>
       </div>
 
       <div class="receptionSection">
-        <h2>Scheduled</h2>
-        <div class="receptionCardGrid" id="scheduledListWrap">
-          <div class="receptionCard"><div class="receptionCardEmpty">No matches scheduled.</div></div>
+        <h2>Court Status</h2>
+        <div id="courtStatusWrap" class="receptionCard courtStatusCard">
+          <div class="receptionCardEmpty">Checking courts…</div>
         </div>
       </div>
 
-      <div class="receptionSection">
-        <h2>Completed Today</h2>
-        <div class="receptionCardGrid" id="dashboardCompletedWrap">
-          <div class="receptionCard"><div class="receptionCardEmpty">Loading…</div></div>
+      <div class="dashboardTwoCol">
+        <div class="receptionSection">
+          <h2>Up Next / Scheduled Today</h2>
+          <div class="receptionCardGrid" id="dashboardScheduledTodayWrap">
+            <div class="receptionCard"><div class="receptionCardEmpty">Loading…</div></div>
+          </div>
+          <button id="viewAllScheduledBtn" class="ghostBtn dashboardViewAllBtn">View all scheduled →</button>
+        </div>
+
+        <div class="receptionSection">
+          <h2>Completed Today</h2>
+          <div class="receptionCardGrid" id="dashboardCompletedWrap">
+            <div class="receptionCard"><div class="receptionCardEmpty">Loading…</div></div>
+          </div>
+          <button id="viewTodayResultsBtn" class="ghostBtn dashboardViewAllBtn">View today's results →</button>
         </div>
       </div>
     </div>
 
     <div class="receptionPage" id="pageMatches">
       <h1>Matches</h1>
-      <button id="matchesNewBtn">Start New Game</button>
-      <button id="openScheduleBtn" class="ghostBtn" style="max-width:220px; display:block; margin-bottom:8px;">+ Schedule Match</button>
-      <button id="exportCsvBtn" class="ghostBtn" style="max-width:220px; display:block; margin-bottom:20px;">Export History (CSV)</button>
+      <button id="matchesNewBtn" class="matchesPrimaryBtn">+ Start New Game</button>
+      <div class="panelBtns matchesSecondaryActions">
+        <button id="openScheduleBtn" class="ghostBtn">+ Schedule Match</button>
+        <button id="exportCsvBtn" class="ghostBtn">Export History (CSV)</button>
+      </div>
+
+      <div class="receptionSection">
+        <h2>All Scheduled Matches</h2>
+        <div class="receptionCardGrid" id="matchesScheduledWrap">
+          <div class="receptionCard"><div class="receptionCardEmpty">Loading…</div></div>
+        </div>
+      </div>
 
       <div class="receptionSection">
         <h2>Search by Date</h2>
@@ -1336,30 +1414,52 @@
     document.getElementById('adminDashboard').classList.add('show');
     closeMobileSidebar('adminDashboard');
     switchReceptionPage('pageDashboard');
-    refreshDashboardActiveMatch();
     checkScheduledPromotions();
   }
   function hideAdminDashboard(){
     document.getElementById('adminDashboard').classList.remove('show');
   }
+  // Display-only formatter — does NOT touch elapsedMatchMs() or any scoring logic.
+  // A match that's genuinely been open a very long time (an old test match never
+  // ended, for example) still shows its real duration, just in an hours+minutes
+  // form instead of a jarring 3-digit minute count.
+  function formatDurationMinutes(mins){
+    mins = Math.max(0, Math.round(mins));
+    if (mins < 60) return mins + ' min';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h + 'h ' + m + 'm';
+  }
   function buildActiveCard(courtName, matchIdForCard, s){
     const card = document.createElement('div');
-    card.className = 'receptionCard';
-    const badge = document.createElement('div');
-    badge.className = 'cardCourtBadge';
-    badge.textContent = courtName || 'Court —';
-    card.appendChild(badge);
+    card.className = 'receptionCard activeNowCard';
+    const header = document.createElement('div');
+    header.className = 'activeCardHeader';
+    const courtLabel = document.createElement('span');
+    courtLabel.className = 'activeCardCourt';
+    courtLabel.textContent = (courtName || 'Court —').toUpperCase();
+    const liveLabel = document.createElement('span');
+    liveLabel.className = 'activeCardLive';
+    const dot = document.createElement('span');
+    dot.className = 'liveDot';
+    liveLabel.appendChild(dot);
+    liveLabel.appendChild(document.createTextNode('LIVE'));
+    header.appendChild(courtLabel);
+    header.appendChild(liveLabel);
+    card.appendChild(header);
     const names = document.createElement('div');
-    const namesText = (s.names && s.names.a && s.names.b) ? (s.names.a + ' vs ' + s.names.b) : 'Match in progress';
-    const scoreText = s.games ? (' — ' + s.games.a + '-' + s.games.b) : '';
-    names.textContent = namesText + scoreText;
+    names.className = 'activeCardTeams';
+    names.textContent = (s.names && s.names.a && s.names.b) ? (s.names.a + ' vs ' + s.names.b) : 'Match in progress';
     card.appendChild(names);
+    const score = document.createElement('div');
+    score.className = 'activeCardScore';
+    score.textContent = s.games ? (s.games.a + ' – ' + s.games.b) : '0 – 0';
+    card.appendChild(score);
     if (typeof s.startTime === 'number' && s.startTime > 0 && s.startTime <= Date.now() + 60000){
-      const mins = Math.max(0, Math.round((Date.now() - s.startTime - (s.totalPausedMs || 0)) / 60000));
-      const startStr = new Date(s.startTime).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      const rawMins = (Date.now() - s.startTime - (s.totalPausedMs || 0)) / 60000;
       const detail = document.createElement('div');
       detail.className = 'cardDetail';
-      detail.textContent = mins + ' min played · started ' + startStr;
+      detail.textContent = formatDurationMinutes(rawMins) + ' played';
       card.appendChild(detail);
     }
     const openBtn = document.createElement('button');
@@ -1400,6 +1500,105 @@
       cards.forEach(c => wrap.appendChild(c));
     })();
   }
+  // Court Status — reuses courtBusyMatchId() (the same verify-don't-trust check
+  // used everywhere else for court availability) rather than a separate check.
+  function refreshCourtStatus(){
+    const wrap = document.getElementById('courtStatusWrap');
+    wrap.innerHTML = '<div class="receptionCardEmpty">Checking courts…</div>';
+    (async () => {
+      let courtsData = null;
+      try { courtsData = await fetch(DB_URL + '/courts.json').then(r => r.json()); } catch(err){ /* none configured */ }
+      const courts = courtsData ? Object.entries(courtsData).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0)) : [];
+      if (!courts.length){ wrap.innerHTML = '<div class="receptionCardEmpty">No courts set up yet.</div>'; return; }
+      let scheduledData = null;
+      try { scheduledData = await fetch(DB_URL + '/scheduled.json').then(r => r.json()); } catch(err){ /* none scheduled */ }
+      const now = Date.now();
+      const rows = [];
+      for (const [courtId, court] of courts){
+        const row = document.createElement('div');
+        row.className = 'courtStatusRow';
+        const name = document.createElement('span');
+        name.className = 'courtStatusName';
+        name.textContent = court.name || 'Unnamed court';
+        row.appendChild(name);
+        const status = document.createElement('span');
+        status.className = 'courtStatusText';
+        const busyId = await courtBusyMatchId(courtId);
+        if (busyId){
+          let mins = 0;
+          try {
+            const s = await fetch(DB_URL + '/matches/' + busyId + '/state.json').then(r => r.json());
+            if (s && typeof s.startTime === 'number' && s.startTime > 0 && s.startTime <= now + 60000){
+              mins = (now - s.startTime - (s.totalPausedMs || 0)) / 60000;
+            }
+          } catch(err){ /* still counts as busy even if we can't read the duration */ }
+          status.textContent = 'Match in progress · ' + formatDurationMinutes(mins);
+          status.classList.add('courtStatusBusy');
+        } else {
+          let nextSched = null;
+          if (scheduledData){
+            Object.values(scheduledData).forEach((sc) => {
+              if (sc.courtId === courtId && sc.startTime && sc.startTime > now){
+                if (!nextSched || sc.startTime < nextSched.startTime) nextSched = sc;
+              }
+            });
+          }
+          if (nextSched){
+            const schedDate = new Date(nextSched.startTime);
+            const timeStr = schedDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            const isToday = dateKey(nextSched.startTime) === dateKey(now);
+            status.textContent = 'Match scheduled ' + (isToday ? timeStr : schedDate.toLocaleDateString([], {weekday:'short'}) + ' ' + timeStr);
+            status.classList.add('courtStatusScheduled');
+          } else {
+            status.textContent = 'Available';
+            status.classList.add('courtStatusFree');
+          }
+        }
+        row.appendChild(status);
+        rows.push(row);
+      }
+      wrap.innerHTML = '';
+      rows.forEach(r => wrap.appendChild(r));
+    })();
+  }
+  // Today summary bar — tallies reuse the exact same data sources/checks as the
+  // sections below rather than a separate counting mechanism.
+  function refreshTodaySummary(){
+    const dateEl = document.getElementById('todaySummaryDate');
+    const statsEl = document.getElementById('todaySummaryStats');
+    dateEl.textContent = new Date().toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
+    statsEl.textContent = 'Loading…';
+    (async () => {
+      let courtsData = null;
+      try { courtsData = await fetch(DB_URL + '/courts.json').then(r => r.json()); } catch(err){ /* none configured */ }
+      const courtIds = courtsData ? Object.keys(courtsData) : [];
+      let busyCourtsCount = 0;
+      for (const courtId of courtIds){
+        const busyId = await courtBusyMatchId(courtId);
+        if (busyId) busyCourtsCount++;
+      }
+      let activeCount = busyCourtsCount;
+      const legacyActive = await getCurrentActiveMatch();
+      if (legacyActive && legacyActive.state && !legacyActive.state.courtId) activeCount++;
+
+      const todayKey = dateKey(Date.now());
+      let scheduledCount = 0;
+      try {
+        const data = await fetch(DB_URL + '/scheduled.json').then(r => r.json());
+        if (data) scheduledCount = Object.values(data).filter(sc => sc.startTime && dateKey(sc.startTime) === todayKey).length;
+      } catch(err){ /* none scheduled */ }
+
+      let completedCount = 0;
+      try {
+        const data = await fetch(DB_URL + '/history.json').then(r => r.json());
+        if (data) completedCount = Object.values(data).filter(e => e.ts && dateKey(e.ts) === todayKey).length;
+      } catch(err){ /* none completed */ }
+
+      const parts = [activeCount + ' Active', scheduledCount + ' Scheduled', completedCount + ' Completed'];
+      if (courtIds.length) parts.push(busyCourtsCount + '/' + courtIds.length + ' Courts in Use');
+      statsEl.textContent = parts.join('  ·  ');
+    })();
+  }
   function buildCompletedCard(entry){
     const row = document.createElement('div');
     row.className = 'receptionCard completedRow';
@@ -1433,7 +1632,7 @@
       const startStr = new Date(entry.ts - mins * 60000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
       const detail = document.createElement('div');
       detail.className = 'cardDetail';
-      detail.textContent = mins + ' min · ' + startStr + '–' + endStr;
+      detail.textContent = formatDurationMinutes(mins) + ' · ' + startStr + '–' + endStr;
       row.appendChild(detail);
     }
     return row;
@@ -1747,58 +1946,80 @@
       if (promoted){
         refreshDashboardActiveMatch();
         refreshScheduledList();
+        refreshScheduledToday();
+        refreshCourtStatus();
+        refreshTodaySummary();
       }
     } catch(err){ /* try again on the next periodic check */ }
   }
   setInterval(checkScheduledPromotions, 30000);
 
   // ---- Scheduled matches ----
+  function buildScheduledCard(id, sched){
+    const card = document.createElement('div');
+    card.className = 'receptionCard scheduledCard';
+    const badge = document.createElement('div');
+    badge.className = 'cardCourtBadge';
+    badge.textContent = sched.courtName || 'Court —';
+    card.appendChild(badge);
+    const teams = document.createElement('div');
+    teams.className = 'scheduledTeams';
+    teams.textContent = (sched.teamA || 'Team A') + ' vs ' + (sched.teamB || 'Team B');
+    card.appendChild(teams);
+    const when = document.createElement('div');
+    when.className = 'cardDetail';
+    when.textContent = sched.startTime
+      ? new Date(sched.startTime).toLocaleString([], {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})
+      : 'No time set';
+    card.appendChild(when);
+    const btnRow = document.createElement('div');
+    btnRow.className = 'scheduledBtnRow';
+    const editBtn = document.createElement('button');
+    editBtn.className = 'scheduledEditBtn';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => { openScheduleModal(id, sched); });
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'scheduledCancelBtn';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => {
+      if (confirm('Cancel this scheduled match?')){
+        firebaseDelete('/scheduled/' + id + '.json');
+        setTimeout(() => { refreshScheduledList(); refreshScheduledToday(); }, 300);
+      }
+    });
+    btnRow.appendChild(editBtn);
+    btnRow.appendChild(cancelBtn);
+    card.appendChild(btnRow);
+    return card;
+  }
+  // Full, unfiltered list — lives on the Matches page.
   function refreshScheduledList(){
-    const wrap = document.getElementById('scheduledListWrap');
+    const wrap = document.getElementById('matchesScheduledWrap');
+    if (!wrap) return;
     wrap.innerHTML = ''; wrap.appendChild(emptyCard('Loading…'));
     fetch(DB_URL + '/scheduled.json').then(r => r.json()).then((data) => {
       if (!data){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('No matches scheduled.')); return; }
       const entries = Object.entries(data).sort((a, b) => (a[1].startTime || 0) - (b[1].startTime || 0));
       if (!entries.length){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('No matches scheduled.')); return; }
       wrap.innerHTML = '';
-      entries.forEach(([id, sched]) => {
-        const card = document.createElement('div');
-        card.className = 'receptionCard scheduledCard';
-        const badge = document.createElement('div');
-        badge.className = 'cardCourtBadge';
-        badge.textContent = sched.courtName || 'Court —';
-        card.appendChild(badge);
-        const teams = document.createElement('div');
-        teams.className = 'scheduledTeams';
-        teams.textContent = (sched.teamA || 'Team A') + ' vs ' + (sched.teamB || 'Team B');
-        card.appendChild(teams);
-        const when = document.createElement('div');
-        when.className = 'cardDetail';
-        when.textContent = sched.startTime
-          ? new Date(sched.startTime).toLocaleString([], {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'})
-          : 'No time set';
-        card.appendChild(when);
-        const btnRow = document.createElement('div');
-        btnRow.className = 'scheduledBtnRow';
-        const editBtn = document.createElement('button');
-        editBtn.className = 'scheduledEditBtn';
-        editBtn.textContent = 'Edit';
-        editBtn.addEventListener('click', () => { openScheduleModal(id, sched); });
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'scheduledCancelBtn';
-        cancelBtn.textContent = 'Cancel';
-        cancelBtn.addEventListener('click', () => {
-          if (confirm('Cancel this scheduled match?')){
-            firebaseDelete('/scheduled/' + id + '.json');
-            setTimeout(refreshScheduledList, 300);
-          }
-        });
-        btnRow.appendChild(editBtn);
-        btnRow.appendChild(cancelBtn);
-        card.appendChild(btnRow);
-        wrap.appendChild(card);
-      });
-    }).catch(() => { wrap.innerHTML = '<div class="receptionCardEmpty">Couldn\'t load scheduled matches.</div>'; });
+      entries.forEach(([id, sched]) => wrap.appendChild(buildScheduledCard(id, sched)));
+    }).catch(() => { wrap.innerHTML = ''; wrap.appendChild(emptyCard("Couldn't load scheduled matches.")); });
+  }
+  // Today only, chronological — lives on the Dashboard as a quick preview.
+  function refreshScheduledToday(){
+    const wrap = document.getElementById('dashboardScheduledTodayWrap');
+    if (!wrap) return;
+    wrap.innerHTML = ''; wrap.appendChild(emptyCard('Loading…'));
+    fetch(DB_URL + '/scheduled.json').then(r => r.json()).then((data) => {
+      if (!data){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('Nothing scheduled today.')); return; }
+      const todayKey = dateKey(Date.now());
+      const entries = Object.entries(data)
+        .filter(([id, sched]) => sched.startTime && dateKey(sched.startTime) === todayKey)
+        .sort((a, b) => (a[1].startTime || 0) - (b[1].startTime || 0));
+      if (!entries.length){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('Nothing scheduled today.')); return; }
+      wrap.innerHTML = '';
+      entries.forEach(([id, sched]) => wrap.appendChild(buildScheduledCard(id, sched)));
+    }).catch(() => { wrap.innerHTML = ''; wrap.appendChild(emptyCard("Couldn't load scheduled matches.")); });
   }
   let editingScheduleId = null;
   function openScheduleModal(existingId, existing){
@@ -1855,16 +2076,28 @@
     });
     editingScheduleId = null;
     document.getElementById('scheduleMatchModal').classList.remove('show');
-    setTimeout(refreshScheduledList, 300);
+    setTimeout(() => { refreshScheduledList(); refreshScheduledToday(); refreshTodaySummary(); }, 300);
   });
 
   function switchReceptionPage(pageId){
     document.querySelectorAll('.receptionPage').forEach(p => p.classList.toggle('active', p.id === pageId));
     document.querySelectorAll('.receptionNavBtn').forEach(b => b.classList.toggle('active', b.dataset.page === pageId));
-    if (pageId === 'pageDashboard'){ refreshDashboardActiveMatch(); refreshDashboardCompleted(); refreshScheduledList(); }
-    if (pageId === 'pageMatches'){ renderCalendar(); refreshMatchesHistoryList(); }
+    if (pageId === 'pageDashboard'){
+      refreshTodaySummary();
+      refreshDashboardActiveMatch();
+      refreshCourtStatus();
+      refreshScheduledToday();
+      refreshDashboardCompleted();
+    }
+    if (pageId === 'pageMatches'){ renderCalendar(); refreshMatchesHistoryList(); refreshScheduledList(); }
     if (pageId === 'pageSettings'){ loadCourtsList(); loadBrandingIntoForm(); updateDefaultFormatUI(); }
   }
+  document.getElementById('viewAllScheduledBtn').addEventListener('click', () => {
+    switchReceptionPage('pageMatches');
+  });
+  document.getElementById('viewTodayResultsBtn').addEventListener('click', () => {
+    switchReceptionPage('pageMatches');
+  });
   document.getElementById('receptionNav').addEventListener('click', (e) => {
     const btn = e.target.closest('.receptionNavBtn');
     if (!btn) return;
@@ -1948,7 +2181,6 @@
     showAdminMatchConsole();
     document.getElementById('newGameBtn').click();
   }
-  document.getElementById('dashboardNewBtn').addEventListener('click', startNewGameFromReception);
   document.getElementById('matchesNewBtn').addEventListener('click', startNewGameFromReception);
 
   // pendingCourtId/pendingCourtName carry the court chosen in wizard step 1
