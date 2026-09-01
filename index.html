@@ -430,11 +430,7 @@
   }
   #dashboardOpenBtn{ background:var(--net); color:#101816; }
   #dashboardNewBtn, #matchesNewBtn{ background:var(--net); color:#101816; }
-  #dashboardHistoryBtn, #matchesHistoryBtn{
-    background:rgba(242,239,230,0.1) !important; color:var(--net) !important;
-    border:1px solid rgba(242,239,230,0.22);
-  }
-  #matchesNewBtn, #matchesHistoryBtn{ max-width:280px; }
+  #matchesNewBtn{ max-width:280px; margin-bottom:20px; }
   #openScheduleBtn{
     padding:12px; border-radius:10px; border:none; cursor:pointer;
     font-family:'Barlow Condensed', sans-serif; font-weight:700; letter-spacing:.06em; text-transform:uppercase; font-size:14px;
@@ -644,7 +640,6 @@
     <nav id="receptionNav">
       <button class="receptionNavBtn active" data-page="pageDashboard">Dashboard</button>
       <button class="receptionNavBtn" data-page="pageMatches">Matches</button>
-      <button class="receptionNavBtn" data-page="pageCourts">Courts</button>
       <button class="receptionNavBtn" data-page="pageSettings">Settings</button>
     </nav>
     <button id="dashboardLogoutBtn">Log Out</button>
@@ -656,7 +651,6 @@
 
       <div class="panelBtns dashboardQuickActions">
         <button id="dashboardNewBtn">Start New Game</button>
-        <button id="dashboardHistoryBtn" class="ghostBtn">View Match History</button>
       </div>
 
       <div class="receptionSection">
@@ -682,25 +676,20 @@
         <h2>Completed Today</h2>
         <div id="dashboardCompletedWrap" class="receptionCardEmpty">Loading…</div>
       </div>
-
-      <div class="receptionSection">
-        <h2>History Calendar</h2>
-        <div id="calendarWrap" class="receptionCard" style="max-width:340px;">Loading…</div>
-      </div>
     </div>
 
     <div class="receptionPage" id="pageMatches">
       <h1>Matches</h1>
       <button id="matchesNewBtn">Start New Game</button>
-      <button id="matchesHistoryBtn" class="ghostBtn">View Match History</button>
-    </div>
 
-    <div class="receptionPage" id="pageCourts">
-      <h1>Courts</h1>
-      <div id="courtsListWrap">Loading…</div>
-      <div class="courtAddRow">
-        <input type="text" id="newCourtName" placeholder="Court name (e.g. Court 3)" />
-        <button id="addCourtBtn">Add Court</button>
+      <div class="receptionSection">
+        <h2>Search by Date</h2>
+        <div id="matchesCalendarWrap" class="receptionCard" style="max-width:340px;">Loading…</div>
+      </div>
+
+      <div class="receptionSection">
+        <h2>All Matches</h2>
+        <div id="matchesHistoryWrap" class="receptionCardGrid">Loading…</div>
       </div>
     </div>
 
@@ -721,6 +710,16 @@
           </div>
         </div>
       </div>
+
+      <div class="receptionSection">
+        <h2>Courts</h2>
+        <div id="courtsListWrap">Loading…</div>
+        <div class="courtAddRow">
+          <input type="text" id="newCourtName" placeholder="Court name (e.g. Court 3)" />
+          <button id="addCourtBtn">Add Court</button>
+        </div>
+      </div>
+
       <p class="receptionNote">Umpire and view-only links for a match are shown once you open or start it, under that match's own Settings panel.</p>
     </div>
 
@@ -1200,7 +1199,7 @@
   // ---- History calendar ----
   let calendarMonth = new Date();
   function renderCalendar(){
-    const wrap = document.getElementById('calendarWrap');
+    const wrap = document.getElementById('matchesCalendarWrap');
     wrap.textContent = 'Loading…';
     fetch(DB_URL + '/history.json').then(r => r.json()).then((raw) => {
       const data = raw || {};
@@ -1245,6 +1244,17 @@
   document.getElementById('closeDayDetail').addEventListener('click', () => {
     document.getElementById('dayDetailModal').classList.remove('show');
   });
+  function refreshMatchesHistoryList(){
+    const wrap = document.getElementById('matchesHistoryWrap');
+    wrap.textContent = 'Loading…';
+    fetch(DB_URL + '/history.json').then(r => r.json()).then((data) => {
+      if (!data){ wrap.innerHTML = '<div class="receptionCardEmpty">No matches recorded yet.</div>'; return; }
+      const entries = Object.values(data).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      if (!entries.length){ wrap.innerHTML = '<div class="receptionCardEmpty">No matches recorded yet.</div>'; return; }
+      wrap.innerHTML = '';
+      entries.forEach(entry => wrap.appendChild(buildCompletedCard(entry)));
+    }).catch(() => { wrap.innerHTML = '<div class="receptionCardEmpty">Couldn\'t load match history.</div>'; });
+  }
 
   // ---- Scheduled matches ----
   function refreshScheduledList(){
@@ -1339,8 +1349,9 @@
   function switchReceptionPage(pageId){
     document.querySelectorAll('.receptionPage').forEach(p => p.classList.toggle('active', p.id === pageId));
     document.querySelectorAll('.receptionNavBtn').forEach(b => b.classList.toggle('active', b.dataset.page === pageId));
-    if (pageId === 'pageDashboard'){ refreshDashboardActiveMatch(); refreshDashboardCompleted(); renderCalendar(); refreshScheduledList(); }
-    if (pageId === 'pageCourts') loadCourtsList();
+    if (pageId === 'pageDashboard'){ refreshDashboardActiveMatch(); refreshDashboardCompleted(); refreshScheduledList(); }
+    if (pageId === 'pageMatches'){ renderCalendar(); refreshMatchesHistoryList(); }
+    if (pageId === 'pageSettings') loadCourtsList();
   }
   document.getElementById('receptionNav').addEventListener('click', (e) => {
     const btn = e.target.closest('.receptionNavBtn');
@@ -1390,12 +1401,6 @@
   }
   document.getElementById('dashboardNewBtn').addEventListener('click', startNewGameFromReception);
   document.getElementById('matchesNewBtn').addEventListener('click', startNewGameFromReception);
-  function openHistoryFromReception(){
-    document.getElementById('historyModal').classList.add('show');
-    loadHistory();
-  }
-  document.getElementById('dashboardHistoryBtn').addEventListener('click', openHistoryFromReception);
-  document.getElementById('matchesHistoryBtn').addEventListener('click', openHistoryFromReception);
   document.getElementById('dashboardLogoutBtn').addEventListener('click', () => {
     fbAuth.signOut();
   });
