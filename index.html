@@ -453,6 +453,12 @@
       display:none; position:fixed; inset:0; z-index:240; background:rgba(0,0,0,0.55);
     }
     .sidebarBackdrop.show{ display:block; }
+    .receptionContent{
+      padding-top: max(70px, calc(env(safe-area-inset-top) + 56px));
+    }
+    .consolePreview{
+      padding-top: max(70px, calc(env(safe-area-inset-top) + 56px));
+    }
   }
   #dashboardLogo{ display:block; width:100%; max-width:150px; margin:0 auto 32px; }
   #receptionNav{ display:flex; flex-direction:column; gap:4px; flex:1; }
@@ -3412,12 +3418,23 @@
     return fetch(url, {signal: controller.signal}).finally(() => clearTimeout(timer));
   }
 
+  function resetToFreshMatch(){
+    matchId = genId();
+    setMatchIdInURL(matchId);
+    const voiceOn = state.voiceOn;
+    state = freshState();
+    state.voiceOn = voiceOn;
+    lastKnownRev = 0;
+  }
   async function initialiseApp(){
+    const isLinkToSpecificMatch = !!(umpireTokenFromURL || isViewOnlyLink);
     try {
       const activeId = await (await fetchWithTimeout(DB_URL + '/activeMatchId.json', 4000)).json();
+      let matchedActive = false;
       if (activeId){
         const activeState = await (await fetchWithTimeout(DB_URL + '/matches/' + activeId + '/state.json', 4000)).json();
         if (activeState && activeState.matchStarted && !activeState.matchOver){
+          matchedActive = true;
           matchId = activeId;
           setMatchIdInURL(matchId);
           const voiceOn = state.voiceOn;
@@ -3429,7 +3446,13 @@
           }
         }
       }
-    } catch(err){ /* offline, slow connection, or no active match yet — the fresh local match is fine */ }
+      if (!matchedActive && !isLinkToSpecificMatch) resetToFreshMatch();
+    } catch(err){
+      // Offline / slow connection — an admin visit still shouldn't display a stale
+      // leftover match, so fall back to blank rather than showing whatever was
+      // loaded earlier in this session.
+      if (!isLinkToSpecificMatch) resetToFreshMatch();
+    }
     updateShareLink();
     subscribeToMatch();
     subscribeToActiveMatch();
