@@ -1423,22 +1423,30 @@
     const results = [];
     const seenMatchIds = new Set();
     let courtsData = null;
-    try { courtsData = await fetch(DB_URL + '/courts.json').then(r => r.json()); } catch(err){ /* no courts configured yet */ }
+    try { courtsData = await fetchWithTimeout(DB_URL + '/courts.json', 6000).then(r => r.json()); } catch(err){ /* no courts configured yet */ }
     const courts = courtsData ? Object.entries(courtsData) : [];
-    for (const [courtId, court] of courts){
-      const busyId = await courtBusyMatchId(courtId);
-      if (!busyId) continue;
-      try {
-        const s = await fetch(DB_URL + '/matches/' + busyId + '/state.json').then(r => r.json());
-        if (s && s.matchStarted && !s.matchOver){
-          results.push({courtName: court.name || 'Court', matchId: busyId, state: s});
-          seenMatchIds.add(busyId);
-        }
-      } catch(err){ /* skip this court on a fetch failure */ }
-    }
+    // Check every court in parallel — sequential awaits here compounded to tens
+    // of seconds once there were several courts, especially under any network
+    // pressure. getCurrentActiveMatch() runs alongside, not after.
+    const [perCourt, legacyActive] = await Promise.all([
+      Promise.all(courts.map(async ([courtId, court]) => {
+        const busyId = await courtBusyMatchId(courtId);
+        if (!busyId) return null;
+        try {
+          const s = await fetchWithTimeout(DB_URL + '/matches/' + busyId + '/state.json', 6000).then(r => r.json());
+          if (s && s.matchStarted && !s.matchOver){
+            return {courtName: court.name || 'Court', matchId: busyId, state: s};
+          }
+        } catch(err){ /* skip this court on a fetch failure */ }
+        return null;
+      })),
+      getCurrentActiveMatch()
+    ]);
+    perCourt.forEach((item) => {
+      if (item){ results.push(item); seenMatchIds.add(item.matchId); }
+    });
     // Fall back to the legacy single global pointer too, in case a match is
     // active without ever having been assigned to a specific court.
-    const legacyActive = await getCurrentActiveMatch();
     if (legacyActive && legacyActive.id && legacyActive.state && !seenMatchIds.has(legacyActive.id)){
       results.push({courtName: legacyActive.state.courtName || 'Court —', matchId: legacyActive.id, state: legacyActive.state});
     }
@@ -1710,14 +1718,15 @@
     wrap.innerHTML = '<div class="receptionCardEmpty">Checking courts…</div>';
     (async () => {
       let courtsData = null;
-      try { courtsData = await fetch(DB_URL + '/courts.json').then(r => r.json()); } catch(err){ /* none configured */ }
+      try { courtsData = await fetchWithTimeout(DB_URL + '/courts.json', 6000).then(r => r.json()); } catch(err){ /* none configured */ }
       const courts = courtsData ? Object.entries(courtsData).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0)) : [];
       if (!courts.length){ wrap.innerHTML = '<div class="receptionCardEmpty">No courts set up yet.</div>'; return; }
       let scheduledData = null;
-      try { scheduledData = await fetch(DB_URL + '/scheduled.json').then(r => r.json()); } catch(err){ /* none scheduled */ }
+      try { scheduledData = await fetchWithTimeout(DB_URL + '/scheduled.json', 6000).then(r => r.json()); } catch(err){ /* none scheduled */ }
       const now = Date.now();
-      const rows = [];
-      for (const [courtId, court] of courts){
+      // Check every court in parallel — this used to be a sequential loop that
+      // could compound to tens of seconds once there were several courts.
+      const rows = await Promise.all(courts.map(async ([courtId, court]) => {
         const row = document.createElement('div');
         row.className = 'courtStatusRow';
         const name = document.createElement('span');
@@ -1730,7 +1739,7 @@
         if (busyId){
           let mins = 0;
           try {
-            const s = await fetch(DB_URL + '/matches/' + busyId + '/state.json').then(r => r.json());
+            const s = await fetchWithTimeout(DB_URL + '/matches/' + busyId + '/state.json', 6000).then(r => r.json());
             if (s && typeof s.startTime === 'number' && s.startTime > 0 && s.startTime <= now + 60000){
               mins = (now - s.startTime - (s.totalPausedMs || 0)) / 60000;
             }
@@ -1758,8 +1767,8 @@
           }
         }
         row.appendChild(status);
-        rows.push(row);
-      }
+        return row;
+      }));
       wrap.innerHTML = '';
       rows.forEach(r => wrap.appendChild(r));
     })();
@@ -1773,29 +1782,26 @@
     statsEl.textContent = 'Loading…';
     (async () => {
       let courtsData = null;
-      try { courtsData = await fetch(DB_URL + '/courts.json').then(r => r.json()); } catch(err){ /* none configured */ }
+      try { courtsData = await fetchWithTimeout(DB_URL + '/courts.json', 6000).then(r => r.json()); } catch(err){ /* none configured */ }
       const courtIds = courtsData ? Object.keys(courtsData) : [];
-      let busyCourtsCount = 0;
-      for (const courtId of courtIds){
-        const busyId = await courtBusyMatchId(courtId);
-        if (busyId) busyCourtsCount++;
-      }
+      const todayKey = dateKey(Date.now());
+
+      // These four checks are all independent — run them together instead of
+      // one after another, which used to compound to tens of seconds once
+      // there were several courts.
+      const [busyFlags, legacyActive, scheduledData, historyData] = await Promise.all([
+        Promise.all(courtIds.map(courtId => courtBusyMatchId(courtId))),
+        getCurrentActiveMatch(),
+        fetchWithTimeout(DB_URL + '/scheduled.json', 6000).then(r => r.json()).catch(() => null),
+        fetchWithTimeout(DB_URL + '/history.json', 6000).then(r => r.json()).catch(() => null)
+      ]);
+
+      const busyCourtsCount = busyFlags.filter(Boolean).length;
       let activeCount = busyCourtsCount;
-      const legacyActive = await getCurrentActiveMatch();
       if (legacyActive && legacyActive.state && !legacyActive.state.courtId) activeCount++;
 
-      const todayKey = dateKey(Date.now());
-      let scheduledCount = 0;
-      try {
-        const data = await fetch(DB_URL + '/scheduled.json').then(r => r.json());
-        if (data) scheduledCount = Object.values(data).filter(sc => sc.startTime && dateKey(sc.startTime) === todayKey).length;
-      } catch(err){ /* none scheduled */ }
-
-      let completedCount = 0;
-      try {
-        const data = await fetch(DB_URL + '/history.json').then(r => r.json());
-        if (data) completedCount = Object.values(data).filter(e => e.ts && dateKey(e.ts) === todayKey).length;
-      } catch(err){ /* none completed */ }
+      const scheduledCount = scheduledData ? Object.values(scheduledData).filter(sc => sc.startTime && dateKey(sc.startTime) === todayKey).length : 0;
+      const completedCount = historyData ? Object.values(historyData).filter(e => e.ts && dateKey(e.ts) === todayKey).length : 0;
 
       const parts = [activeCount + ' Active', scheduledCount + ' Scheduled', completedCount + ' Completed'];
       if (courtIds.length) parts.push(busyCourtsCount + '/' + courtIds.length + ' Courts in Use');
