@@ -528,7 +528,8 @@
   .liveDot{ width:7px; height:7px; border-radius:50%; background:#FF6B6B; }
   .activeCardTeams{ font-size:16px; font-weight:700; margin-top:2px; }
   .activeCardScore{ font-size:32px; font-weight:800; font-family:'Archivo Black', sans-serif; }
-  .richActiveCard{ max-width:420px; gap:8px; }
+  .richActiveCard{ max-width:270px; gap:8px; }
+  #matchCentreLiveWrap{ grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); }
   .richCardGroup{
     border-top:1px solid rgba(242,239,230,0.1); margin-top:10px; padding-top:10px;
   }
@@ -539,6 +540,15 @@
   .richCardFullscreenLink{ text-align:center; text-decoration:none; margin-top:8px; }
   #pageMatches .shareRow{ display:flex; align-items:center; gap:6px; margin-top:4px; }
   #pageMatches .shareRow button{ display:inline-block; width:auto; margin-top:0; }
+  .quickPointRow{ display:flex; gap:6px; margin-bottom:8px; }
+  #pageMatches .quickPointRow button{ display:block; width:auto; flex:1; margin-top:0; padding:9px 4px; font-size:12px; }
+  .manualPointRow{ display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+  .manualPointInput{
+    width:46px; flex-shrink:0; box-sizing:border-box; background:rgba(242,239,230,0.08);
+    border:1px solid rgba(242,239,230,0.2); border-radius:8px; color:var(--net);
+    padding:7px 4px; font-family:inherit; font-size:13px; text-align:center;
+  }
+  #pageMatches .manualPointRow button{ display:block; width:auto; flex:1; margin-top:0; padding:7px 4px; font-size:11px; }
 
   /* Court Status */
   .courtStatusCard{ max-width:520px; gap:0; padding:6px 18px; }
@@ -1516,8 +1526,13 @@
 
     const score = document.createElement('div');
     score.className = 'activeCardScore';
-    score.textContent = s.games ? (s.games.a + ' – ' + s.games.b) : '0 – 0';
+    score.textContent = s.pts ? (s.pts.a + ' – ' + s.pts.b) : '0 – 0';
     card.appendChild(score);
+
+    const gamesLine = document.createElement('div');
+    gamesLine.className = 'cardDetail';
+    gamesLine.textContent = 'Games: ' + (s.games ? (s.games.a + '-' + s.games.b) : '0-0');
+    card.appendChild(gamesLine);
 
     const setsLine = document.createElement('div');
     setsLine.className = 'cardDetail';
@@ -1538,6 +1553,49 @@
     scoreLabel.className = 'richCardGroupLabel';
     scoreLabel.textContent = 'Score Controls';
     scoreGroup.appendChild(scoreLabel);
+
+    const quickRow = document.createElement('div');
+    quickRow.className = 'quickPointRow';
+    const plusABtn = document.createElement('button');
+    plusABtn.className = 'ghostBtn';
+    plusABtn.textContent = '+1 Team A';
+    plusABtn.addEventListener('click', () => actOnMatch(matchIdForCard, () => addPoint('a')));
+    const plusBBtn = document.createElement('button');
+    plusBBtn.className = 'ghostBtn';
+    plusBBtn.textContent = '+1 Team B';
+    plusBBtn.addEventListener('click', () => actOnMatch(matchIdForCard, () => addPoint('b')));
+    quickRow.appendChild(plusABtn);
+    quickRow.appendChild(plusBBtn);
+    scoreGroup.appendChild(quickRow);
+
+    const manualRow = document.createElement('div');
+    manualRow.className = 'manualPointRow';
+    const manualInput = document.createElement('input');
+    manualInput.type = 'number';
+    manualInput.min = '1';
+    manualInput.max = '20';
+    manualInput.value = '1';
+    manualInput.className = 'manualPointInput';
+    manualInput.title = 'Number of points to add';
+    const manualABtn = document.createElement('button');
+    manualABtn.className = 'shareToggleBtn';
+    manualABtn.textContent = 'Add → A';
+    manualABtn.addEventListener('click', () => {
+      const n = Math.max(1, Math.min(20, parseInt(manualInput.value, 10) || 1));
+      actOnMatch(matchIdForCard, () => { for (let i = 0; i < n; i++){ if (state.matchOver) break; addPoint('a'); } });
+    });
+    const manualBBtn = document.createElement('button');
+    manualBBtn.className = 'shareToggleBtn';
+    manualBBtn.textContent = 'Add → B';
+    manualBBtn.addEventListener('click', () => {
+      const n = Math.max(1, Math.min(20, parseInt(manualInput.value, 10) || 1));
+      actOnMatch(matchIdForCard, () => { for (let i = 0; i < n; i++){ if (state.matchOver) break; addPoint('b'); } });
+    });
+    manualRow.appendChild(manualInput);
+    manualRow.appendChild(manualABtn);
+    manualRow.appendChild(manualBBtn);
+    scoreGroup.appendChild(manualRow);
+
     const undoBtn = document.createElement('button');
     undoBtn.className = 'ghostBtn';
     undoBtn.textContent = 'Undo';
