@@ -441,20 +441,6 @@
   .consolePreviewStatus.statusLive{ color:#8FE3A0; }
   .consolePreviewStatus.statusPaused{ color:#FF6B6B; }
 
-  /* Rich Active Matches cards on the Matches page */
-  .richActiveCard{ max-width:420px; gap:8px; }
-  .richCardGroup{
-    border-top:1px solid rgba(242,239,230,0.1); margin-top:10px; padding-top:10px;
-  }
-  .richCardGroupLabel{
-    font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
-    opacity:.5; margin-bottom:6px;
-  }
-  .richCardFullscreenLink{ text-align:center; text-decoration:none; margin-top:8px; }
-  /* Overrides the Matches page's generic full-width button rule so the compact
-     Show/Copy buttons in a share row stay inline instead of stacking. */
-  #pageMatches .shareRow{ display:flex; align-items:center; gap:6px; margin-top:4px; }
-  #pageMatches .shareRow button{ display:inline-block; width:auto; margin-top:0; }
   .receptionSidebar{
     width:220px; flex-shrink:0; box-sizing:border-box;
     background:#0E1C17; border-right:1px solid rgba(242,239,230,0.1);
@@ -899,13 +885,6 @@
       <div class="panelBtns matchesSecondaryActions">
         <button id="openScheduleBtn" class="ghostBtn">+ Schedule Match</button>
         <button id="exportCsvBtn" class="ghostBtn">Export History (CSV)</button>
-      </div>
-
-      <div class="receptionSection">
-        <h2>Active Matches</h2>
-        <div class="receptionCardGrid" id="matchesActiveWrap">
-          <div class="receptionCard"><div class="receptionCardEmpty">Checking for matches in progress…</div></div>
-        </div>
       </div>
 
       <div class="receptionSection">
@@ -1547,173 +1526,6 @@
       list.forEach(item => wrap.appendChild(buildActiveCard(item.courtName, item.matchId, item.state)));
     })();
   }
-  // ---- Active Matches on the Matches page (full inline controls per card) ----
-  // Any action that must apply to a *specific* match first loads that match into
-  // the shared global context (matchId/state), then calls the exact same
-  // control functions the Match Centre uses — nothing here is reimplemented.
-  async function actOnMatch(targetMatchId, actionFn){
-    await loadMatchIntoContext(targetMatchId);
-    actionFn();
-    setTimeout(() => { if (document.getElementById('matchesActiveWrap')) refreshMatchesActiveList(); }, 500);
-  }
-  function buildShareRow(label, url){
-    const wrap = document.createElement('div');
-    wrap.className = 'setupGroup';
-    const lbl = document.createElement('div');
-    lbl.className = 'setupLabel';
-    lbl.textContent = label;
-    wrap.appendChild(lbl);
-    const row = document.createElement('div');
-    row.className = 'shareRow';
-    const masked = document.createElement('span');
-    masked.className = 'shareMasked';
-    masked.textContent = 'Link hidden';
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'shareToggleBtn';
-    toggleBtn.textContent = 'Show';
-    toggleBtn.addEventListener('click', () => {
-      const revealed = masked.classList.toggle('revealed');
-      masked.textContent = revealed ? url : 'Link hidden';
-      toggleBtn.textContent = revealed ? 'Hide' : 'Show';
-    });
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'shareCopyBtn';
-    copyBtn.textContent = 'Copy';
-    copyBtn.addEventListener('click', (e) => copyToClipboard(url, e.currentTarget));
-    row.appendChild(masked); row.appendChild(toggleBtn); row.appendChild(copyBtn);
-    wrap.appendChild(row);
-    return wrap;
-  }
-  async function buildRichActiveCard(courtName, matchIdForCard, s){
-    const card = document.createElement('div');
-    card.className = 'receptionCard activeNowCard richActiveCard';
-
-    const header = document.createElement('div');
-    header.className = 'activeCardHeader';
-    const courtLabel = document.createElement('span');
-    courtLabel.className = 'activeCardCourt';
-    courtLabel.textContent = (courtName || 'Court —').toUpperCase();
-    const liveLabel = document.createElement('span');
-    liveLabel.className = 'activeCardLive';
-    const dot = document.createElement('span');
-    dot.className = 'liveDot';
-    liveLabel.appendChild(dot);
-    liveLabel.appendChild(document.createTextNode(s.paused ? 'PAUSED' : 'LIVE'));
-    header.appendChild(courtLabel);
-    header.appendChild(liveLabel);
-    card.appendChild(header);
-
-    const names = document.createElement('div');
-    names.className = 'activeCardTeams';
-    names.textContent = (s.names && s.names.a && s.names.b) ? (s.names.a + ' vs ' + s.names.b) : 'Match in progress';
-    card.appendChild(names);
-
-    const score = document.createElement('div');
-    score.className = 'activeCardScore';
-    score.textContent = s.games ? (s.games.a + ' – ' + s.games.b) : '0 – 0';
-    card.appendChild(score);
-
-    const setsLine = document.createElement('div');
-    setsLine.className = 'cardDetail';
-    setsLine.textContent = 'Sets: ' + (s.sets ? (s.sets.a + '-' + s.sets.b) : '0-0') + ' · Best of ' + (s.setsToWin === 1 ? '1' : '3');
-    card.appendChild(setsLine);
-
-    if (typeof s.startTime === 'number' && s.startTime > 0 && s.startTime <= Date.now() + 60000){
-      const rawMins = (Date.now() - s.startTime - (s.totalPausedMs || 0)) / 60000;
-      const timeLine = document.createElement('div');
-      timeLine.className = 'cardDetail';
-      timeLine.textContent = formatDurationMinutes(rawMins) + ' played';
-      card.appendChild(timeLine);
-    }
-
-    const scoreGroup = document.createElement('div');
-    scoreGroup.className = 'richCardGroup';
-    const scoreLabel = document.createElement('div');
-    scoreLabel.className = 'richCardGroupLabel';
-    scoreLabel.textContent = 'Score Controls';
-    scoreGroup.appendChild(scoreLabel);
-    const undoBtn = document.createElement('button');
-    undoBtn.className = 'ghostBtn';
-    undoBtn.textContent = 'Undo';
-    undoBtn.addEventListener('click', () => actOnMatch(matchIdForCard, () => undoRemote()));
-    const pauseBtn = document.createElement('button');
-    pauseBtn.className = 'ghostBtn';
-    pauseBtn.textContent = 'Pause / Resume';
-    pauseBtn.addEventListener('click', () => actOnMatch(matchIdForCard, () => togglePause()));
-    scoreGroup.appendChild(undoBtn);
-    scoreGroup.appendChild(pauseBtn);
-    card.appendChild(scoreGroup);
-
-    const matchGroup = document.createElement('div');
-    matchGroup.className = 'richCardGroup';
-    const matchLabel = document.createElement('div');
-    matchLabel.className = 'richCardGroupLabel';
-    matchLabel.textContent = 'Match Controls';
-    matchGroup.appendChild(matchLabel);
-    const restartBtn = document.createElement('button');
-    restartBtn.className = 'ghostBtn';
-    restartBtn.textContent = 'Restart Match';
-    restartBtn.addEventListener('click', () => actOnMatch(matchIdForCard, () => document.getElementById('resetMatch').click()));
-    const endBtn = document.createElement('button');
-    endBtn.className = 'dangerBtn';
-    endBtn.textContent = 'End Game';
-    endBtn.addEventListener('click', () => actOnMatch(matchIdForCard, () => document.getElementById('endGameBtn').click()));
-    const historyBtn = document.createElement('button');
-    historyBtn.className = 'ghostBtn';
-    historyBtn.textContent = 'Match History';
-    historyBtn.addEventListener('click', () => {
-      document.getElementById('historyModal').classList.add('show');
-      loadHistory();
-    });
-    matchGroup.appendChild(restartBtn);
-    matchGroup.appendChild(endBtn);
-    matchGroup.appendChild(historyBtn);
-    card.appendChild(matchGroup);
-
-    let tok = null;
-    try { tok = await fetch(DB_URL + '/matches/' + matchIdForCard + '/umpireToken.json').then(r => r.json()); } catch(err){ /* share links just won't be available yet */ }
-    const uUrl = shareUrlFor(matchIdForCard, tok);
-    const vUrl = viewUrlFor(matchIdForCard);
-    const shareGroup = document.createElement('div');
-    shareGroup.className = 'richCardGroup';
-    const shareLabel = document.createElement('div');
-    shareLabel.className = 'richCardGroupLabel';
-    shareLabel.textContent = 'Sharing';
-    shareGroup.appendChild(shareLabel);
-    shareGroup.appendChild(buildShareRow('Umpire (full control)', uUrl));
-    shareGroup.appendChild(buildShareRow('View only', vUrl));
-    const fullscreenLink = document.createElement('a');
-    fullscreenLink.className = 'ghostBtn richCardFullscreenLink';
-    fullscreenLink.target = '_blank';
-    fullscreenLink.rel = 'noopener';
-    fullscreenLink.href = uUrl;
-    fullscreenLink.textContent = 'View Full Scoreboard ↗';
-    shareGroup.appendChild(fullscreenLink);
-    card.appendChild(shareGroup);
-
-    const openBtn = document.createElement('button');
-    openBtn.className = 'ghostBtn';
-    openBtn.textContent = 'Open in Match Centre';
-    openBtn.addEventListener('click', () => openSpecificMatch(matchIdForCard));
-    card.appendChild(openBtn);
-
-    return card;
-  }
-  function refreshMatchesActiveList(){
-    const wrap = document.getElementById('matchesActiveWrap');
-    if (!wrap) return;
-    wrap.innerHTML = ''; wrap.appendChild(emptyCard('Checking for matches in progress…'));
-    (async () => {
-      const list = await gatherActiveMatches();
-      if (!list.length){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('No match currently in progress.')); return; }
-      const built = [];
-      for (const item of list){
-        built.push(await buildRichActiveCard(item.courtName, item.matchId, item.state));
-      }
-      wrap.innerHTML = '';
-      built.forEach(c => wrap.appendChild(c));
-    })();
-  }
   // Court Status — reuses courtBusyMatchId() (the same verify-don't-trust check
   // used everywhere else for court availability) rather than a separate check.
   function refreshCourtStatus(){
@@ -2163,7 +1975,6 @@
         refreshScheduledToday();
         refreshCourtStatus();
         refreshTodaySummary();
-        if (document.getElementById('matchesActiveWrap')) refreshMatchesActiveList();
       }
     } catch(err){ /* try again on the next periodic check */ }
   }
@@ -2304,7 +2115,7 @@
       refreshScheduledToday();
       refreshDashboardCompleted();
     }
-    if (pageId === 'pageMatches'){ renderCalendar(); refreshMatchesHistoryList(); refreshScheduledList(); refreshMatchesActiveList(); }
+    if (pageId === 'pageMatches'){ renderCalendar(); refreshMatchesHistoryList(); refreshScheduledList(); }
     if (pageId === 'pageSettings'){ loadCourtsList(); loadBrandingIntoForm(); updateDefaultFormatUI(); }
   }
   document.getElementById('viewAllScheduledBtn').addEventListener('click', () => {
@@ -3489,7 +3300,6 @@
     document.getElementById('confirmModal').classList.remove('show');
     resetMatch();
     el.settings.classList.remove('show');
-    if (document.getElementById('matchesActiveWrap')) setTimeout(refreshMatchesActiveList, 400);
   });
 
   document.getElementById('newGameBtn').addEventListener('click', async (e) => {
@@ -3529,7 +3339,6 @@
     document.getElementById('confirmEndModal').classList.remove('show');
     endGameNow();
     el.settings.classList.remove('show');
-    if (document.getElementById('matchesActiveWrap')) setTimeout(refreshMatchesActiveList, 400);
   });
   document.getElementById('newMatchBtn').addEventListener('click', (e) => {
     e.stopPropagation(); resetMatch();
