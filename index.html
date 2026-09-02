@@ -1880,13 +1880,24 @@
   function refreshMatchesHistoryList(){
     const wrap = document.getElementById('matchesHistoryWrap');
     wrap.textContent = 'Loading…';
-    fetch(DB_URL + '/history.json').then(r => r.json()).then((data) => {
+    fetchWithTimeout(DB_URL + '/history.json', 8000).then(r => r.json()).then((data) => {
       if (!data){ wrap.innerHTML = '<div class="receptionCardEmpty">No matches recorded yet.</div>'; return; }
       const entries = Object.values(data).sort((a, b) => (b.ts || 0) - (a.ts || 0));
       if (!entries.length){ wrap.innerHTML = '<div class="receptionCardEmpty">No matches recorded yet.</div>'; return; }
       wrap.innerHTML = '';
       entries.forEach(entry => wrap.appendChild(buildCompletedCard(entry)));
-    }).catch(() => { wrap.innerHTML = '<div class="receptionCardEmpty">Couldn\'t load match history.</div>'; });
+    }).catch(() => {
+      wrap.innerHTML = '';
+      const empty = document.createElement('div');
+      empty.className = 'receptionCardEmpty';
+      empty.textContent = "Couldn't load match history — ";
+      const retryBtn = document.createElement('button');
+      retryBtn.className = 'shareToggleBtn';
+      retryBtn.textContent = 'Retry';
+      retryBtn.addEventListener('click', refreshMatchesHistoryList);
+      empty.appendChild(retryBtn);
+      wrap.appendChild(empty);
+    });
   }
 
   function csvEscape(val){
@@ -2023,13 +2034,27 @@
     const wrap = document.getElementById('matchesScheduledWrap');
     if (!wrap) return;
     wrap.innerHTML = ''; wrap.appendChild(emptyCard('Loading…'));
-    fetch(DB_URL + '/scheduled.json').then(r => r.json()).then((data) => {
+    fetchWithTimeout(DB_URL + '/scheduled.json', 8000).then(r => r.json()).then((data) => {
       if (!data){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('No matches scheduled.')); return; }
       const entries = Object.entries(data).sort((a, b) => (a[1].startTime || 0) - (b[1].startTime || 0));
       if (!entries.length){ wrap.innerHTML = ''; wrap.appendChild(emptyCard('No matches scheduled.')); return; }
       wrap.innerHTML = '';
       entries.forEach(([id, sched]) => wrap.appendChild(buildScheduledCard(id, sched)));
-    }).catch(() => { wrap.innerHTML = ''; wrap.appendChild(emptyCard("Couldn't load scheduled matches.")); });
+    }).catch(() => {
+      wrap.innerHTML = '';
+      const card = document.createElement('div');
+      card.className = 'receptionCard';
+      const empty = document.createElement('div');
+      empty.className = 'receptionCardEmpty';
+      empty.textContent = "Couldn't load scheduled matches — ";
+      const retryBtn = document.createElement('button');
+      retryBtn.className = 'shareToggleBtn';
+      retryBtn.textContent = 'Retry';
+      retryBtn.addEventListener('click', refreshScheduledList);
+      empty.appendChild(retryBtn);
+      card.appendChild(empty);
+      wrap.appendChild(card);
+    });
   }
   // Today only, chronological — lives on the Dashboard as a quick preview.
   function refreshScheduledToday(){
