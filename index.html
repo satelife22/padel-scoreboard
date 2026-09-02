@@ -263,6 +263,20 @@
   #scheduleDate, #scheduleTime{ display:inline-block; width:calc(50% - 5px); }
   #scheduleDate{ margin-right:10px; }
   #scheduleError{ color:#FF6B6B; font-size:13px; min-height:16px; margin-bottom:4px; }
+  #changeCourtModal{
+    position:fixed; inset:0; z-index:210;
+    background:rgba(6,12,10,0.94);
+    display:none; align-items:center; justify-content:center;
+    padding: 20px 16px;
+  }
+  #changeCourtModal.show{ display:flex; }
+  #changeCourtModal select{
+    width:100%; box-sizing:border-box; background:rgba(242,239,230,0.08);
+    border:1px solid rgba(242,239,230,0.2); border-radius:10px; color:var(--net);
+    font-size:15px; padding:12px 14px; font-family:inherit;
+  }
+  #changeCourtModal select option{ background:#101E19; color:var(--net); }
+  #changeCourtError{ color:#FF6B6B; font-size:13px; min-height:16px; margin:8px 0 4px; }
   #dayDetailBody{ overflow-y:auto; margin:14px 0 18px; max-height:60vh; }
   #dayDetailBody .receptionCard{ margin-bottom:10px; }
   .historyPanel{ margin:0; width:min(92vw, 460px); max-height:80vh; display:flex; flex-direction:column; }
@@ -1161,6 +1175,22 @@
   </div>
 </div>
 
+<div id="changeCourtModal">
+  <div class="panel">
+    <h2>Change Court</h2>
+    <p class="setupHint" id="changeCourtMatchLabel"></p>
+    <div class="setupGroup">
+      <div class="setupLabel">Court</div>
+      <select id="changeCourtSelect"></select>
+    </div>
+    <div id="changeCourtError"></div>
+    <div class="panelBtns">
+      <button id="cancelChangeCourtBtn" class="ghostBtn">Cancel</button>
+      <button id="saveChangeCourtBtn">Save</button>
+    </div>
+  </div>
+</div>
+
 
 <div id="playerSetup">
   <div class="panel">
@@ -1484,6 +1514,88 @@
     actionFn();
     setTimeout(() => { if (document.getElementById('matchCentreLiveWrap')) refreshMatchCentreLive(); }, 500);
   }
+  // ---- Change Court ----
+  let changingCourtMatchId = null;
+  let changingCourtOldCourtId = null;
+  async function openChangeCourtModal(matchId, oldCourtId, teamsLabel){
+    changingCourtMatchId = matchId;
+    changingCourtOldCourtId = oldCourtId || null;
+    document.getElementById('changeCourtMatchLabel').textContent = teamsLabel || '';
+    document.getElementById('changeCourtError').textContent = '';
+    const sel = document.getElementById('changeCourtSelect');
+    sel.innerHTML = '<option value="">Loading courts…</option>';
+    document.getElementById('changeCourtModal').classList.add('show');
+    try {
+      const data = await fetchWithTimeout(DB_URL + '/courts.json', 6000).then(r => r.json());
+      sel.innerHTML = '';
+      if (!data){ sel.innerHTML = '<option value="">No courts set up yet</option>'; return; }
+      const entries = Object.entries(data).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0));
+      for (const [courtId, court] of entries){
+        // A court currently busy with a DIFFERENT match is left out; the
+        // match's own current court (if any) and any free court stay available.
+        if (courtId !== oldCourtId){
+          const busyWith = await courtBusyMatchId(courtId);
+          if (busyWith && busyWith !== matchId) continue;
+        }
+        const opt = document.createElement('option');
+        opt.value = courtId;
+        opt.textContent = (court.name || 'Unnamed court') + (courtId === oldCourtId ? ' (current)' : '');
+        if (courtId === oldCourtId) opt.selected = true;
+        sel.appendChild(opt);
+      }
+      if (!sel.children.length){ sel.innerHTML = '<option value="">No other courts available right now</option>'; }
+    } catch(err){ sel.innerHTML = '<option value="">Couldn\'t load courts</option>'; }
+  }
+  document.getElementById('cancelChangeCourtBtn').addEventListener('click', () => {
+    document.getElementById('changeCourtModal').classList.remove('show');
+  });
+  document.getElementById('saveChangeCourtBtn').addEventListener('click', async () => {
+    const sel = document.getElementById('changeCourtSelect');
+    const newCourtId = sel.value;
+    const errBox = document.getElementById('changeCourtError');
+    if (!newCourtId){ errBox.textContent = 'Pick a court.'; return; }
+    const newCourtName = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent.replace(' (current)', '') : '';
+    const matchId = changingCourtMatchId;
+    const oldCourtId = changingCourtOldCourtId;
+    if (newCourtId === oldCourtId){
+      document.getElementById('changeCourtModal').classList.remove('show');
+      return;
+    }
+    const btn = document.getElementById('saveChangeCourtBtn');
+    const oldText = btn.textContent;
+    btn.textContent = 'Saving…';
+    btn.disabled = true;
+    try {
+      // Release the old court's pointer only if it's genuinely still pointing
+      // at this match — never blindly clear a court another match might have
+      // since claimed.
+      if (oldCourtId){
+        const cur = await fetch(DB_URL + '/courts/' + oldCourtId + '/activeMatchId.json').then(r => r.json());
+        if (cur === matchId){
+          await fetch(DB_URL + '/courts/' + oldCourtId + '/activeMatchId.json', {
+            method: 'PUT', headers: {'Content-Type':'application/json'}, body: 'null'
+          });
+        }
+      }
+      await loadMatchIntoContext(matchId);
+      state.courtId = newCourtId;
+      state.courtName = newCourtName;
+      markDirty();
+      render(null); // persist() runs as part of render(), claiming the new court's pointer
+    } catch(err){
+      errBox.textContent = "Couldn't change court — try again.";
+      btn.textContent = oldText;
+      btn.disabled = false;
+      return;
+    }
+    btn.textContent = oldText;
+    btn.disabled = false;
+    document.getElementById('changeCourtModal').classList.remove('show');
+    refreshMatchCentreLive();
+    refreshCourtStatus();
+    refreshTodaySummary();
+    refreshDashboardActiveMatch();
+  });
   function buildShareRow(label, url){
     const wrap = document.createElement('div');
     wrap.className = 'setupGroup';
@@ -1641,9 +1753,17 @@
       document.getElementById('historyModal').classList.add('show');
       loadHistory();
     });
+    const changeCourtBtn = document.createElement('button');
+    changeCourtBtn.className = 'ghostBtn';
+    changeCourtBtn.textContent = 'Change Court';
+    changeCourtBtn.addEventListener('click', () => {
+      const teamsLabel = (s.names && s.names.a && s.names.b) ? (s.names.a + ' vs ' + s.names.b) : 'This match';
+      openChangeCourtModal(matchIdForCard, s.courtId || null, teamsLabel);
+    });
     matchGroup.appendChild(restartBtn);
     matchGroup.appendChild(endBtn);
     matchGroup.appendChild(historyBtn);
+    matchGroup.appendChild(changeCourtBtn);
     card.appendChild(matchGroup);
 
     let tok = null;
