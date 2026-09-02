@@ -523,9 +523,15 @@
   .activeCardCourt{ font-size:13px; font-weight:800; letter-spacing:.06em; color:var(--brand); }
   .activeCardLive{
     display:flex; align-items:center; gap:6px; font-size:11px; font-weight:800; letter-spacing:.08em;
-    color:#FF6B6B;
+    color:#8FE3A0; animation:liveFlash 2s ease-in-out infinite;
   }
-  .liveDot{ width:7px; height:7px; border-radius:50%; background:#FF6B6B; }
+  .liveDot{ width:7px; height:7px; border-radius:50%; background:#8FE3A0; }
+  @keyframes liveFlash{
+    0%, 100% { opacity:1; }
+    50% { opacity:.4; }
+  }
+  .activeCardLive.isPaused{ color:#FFB020; animation:none; }
+  .activeCardLive.isPaused .liveDot{ background:#FFB020; }
   .activeCardTeams{ font-size:16px; font-weight:700; margin-top:2px; }
   .activeCardScore{ font-size:32px; font-weight:800; font-family:'Archivo Black', sans-serif; }
   .richActiveCard{ max-width:270px; gap:8px; }
@@ -1415,8 +1421,12 @@
     card.appendChild(names);
     const score = document.createElement('div');
     score.className = 'activeCardScore';
-    score.textContent = s.games ? (s.games.a + ' – ' + s.games.b) : '0 – 0';
+    score.textContent = s.pts ? (s.pts.a + ' – ' + s.pts.b) : '0 – 0';
     card.appendChild(score);
+    const gamesLine = document.createElement('div');
+    gamesLine.className = 'cardDetail';
+    gamesLine.textContent = 'Games: ' + (s.games ? (s.games.a + '-' + s.games.b) : '0-0');
+    card.appendChild(gamesLine);
     if (typeof s.startTime === 'number' && s.startTime > 0 && s.startTime <= Date.now() + 60000){
       const rawMins = (Date.now() - s.startTime - (s.totalPausedMs || 0)) / 60000;
       const detail = document.createElement('div');
@@ -1512,7 +1522,7 @@
     courtLabel.className = 'activeCardCourt';
     courtLabel.textContent = (courtName || 'Court —').toUpperCase();
     const liveLabel = document.createElement('span');
-    liveLabel.className = 'activeCardLive';
+    liveLabel.className = 'activeCardLive' + (s.paused ? ' isPaused' : '');
     const dot = document.createElement('span');
     dot.className = 'liveDot';
     liveLabel.appendChild(dot);
