@@ -1475,7 +1475,7 @@
     const results = [];
     const seenMatchIds = new Set();
     let courtsData = null;
-    try { courtsData = await fetchWithTimeout(DB_URL + '/courts.json', 6000).then(r => r.json()); } catch(err){ /* no courts configured yet */ }
+    try { courtsData = await fetchWithTimeout(DB_URL + '/courts.json', 8000).then(r => r.json()); } catch(err){ /* no courts configured yet */ }
     const courts = courtsData ? Object.entries(courtsData) : [];
     // Check every court in parallel — sequential awaits here compounded to tens
     // of seconds once there were several courts, especially under any network
@@ -1485,7 +1485,7 @@
         const busyId = await courtBusyMatchId(courtId);
         if (!busyId) return null;
         try {
-          const s = await fetchWithTimeout(DB_URL + '/matches/' + busyId + '/state.json', 6000).then(r => r.json());
+          const s = await fetchWithTimeout(DB_URL + '/matches/' + busyId + '/state.json', 8000).then(r => r.json());
           if (s && s.matchStarted && !s.matchOver){
             return {courtName: court.name || 'Court', matchId: busyId, state: s};
           }
@@ -1526,7 +1526,7 @@
     if (!oldCard) { refreshMatchCentreLive(); return; }
     let s = null;
     try {
-      s = await fetchWithTimeout(DB_URL + '/matches/' + matchId + '/state.json', 6000).then(r => r.json());
+      s = await fetchWithTimeout(DB_URL + '/matches/' + matchId + '/state.json', 8000).then(r => r.json());
     } catch(err){ return; } // leave the existing card as-is on a fetch failure
     if (!s || !s.matchStarted || s.matchOver){
       removeLiveTile(matchId);
@@ -1554,7 +1554,7 @@
     sel.innerHTML = '<option value="">Loading courts…</option>';
     document.getElementById('changeCourtModal').classList.add('show');
     try {
-      const data = await fetchWithTimeout(DB_URL + '/courts.json', 6000).then(r => r.json());
+      const data = await fetchWithTimeout(DB_URL + '/courts.json', 8000).then(r => r.json());
       sel.innerHTML = '';
       if (!data){ sel.innerHTML = '<option value="">No courts set up yet</option>'; return; }
       const entries = Object.entries(data).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0));
@@ -1937,11 +1937,11 @@
     wrap.innerHTML = '<div class="receptionCardEmpty">Checking courts…</div>';
     (async () => {
       let courtsData = null;
-      try { courtsData = await fetchWithTimeout(DB_URL + '/courts.json', 6000).then(r => r.json()); } catch(err){ /* none configured */ }
+      try { courtsData = await fetchWithTimeout(DB_URL + '/courts.json', 8000).then(r => r.json()); } catch(err){ /* none configured */ }
       const courts = courtsData ? Object.entries(courtsData).sort((a, b) => (a[1].createdAt || 0) - (b[1].createdAt || 0)) : [];
       if (!courts.length){ wrap.innerHTML = '<div class="receptionCardEmpty">No courts set up yet.</div>'; return; }
       let scheduledData = null;
-      try { scheduledData = await fetchWithTimeout(DB_URL + '/scheduled.json', 6000).then(r => r.json()); } catch(err){ /* none scheduled */ }
+      try { scheduledData = await fetchWithTimeout(DB_URL + '/scheduled.json', 8000).then(r => r.json()); } catch(err){ /* none scheduled */ }
       const now = Date.now();
       // Check every court in parallel — this used to be a sequential loop that
       // could compound to tens of seconds once there were several courts.
@@ -1958,7 +1958,7 @@
         if (busyId){
           let mins = 0;
           try {
-            const s = await fetchWithTimeout(DB_URL + '/matches/' + busyId + '/state.json', 6000).then(r => r.json());
+            const s = await fetchWithTimeout(DB_URL + '/matches/' + busyId + '/state.json', 8000).then(r => r.json());
             if (s && typeof s.startTime === 'number' && s.startTime > 0 && s.startTime <= now + 60000){
               mins = (now - s.startTime - (s.totalPausedMs || 0)) / 60000;
             }
@@ -2001,7 +2001,7 @@
     statsEl.textContent = 'Loading…';
     (async () => {
       let courtsData = null;
-      try { courtsData = await fetchWithTimeout(DB_URL + '/courts.json', 6000).then(r => r.json()); } catch(err){ /* none configured */ }
+      try { courtsData = await fetchWithTimeout(DB_URL + '/courts.json', 8000).then(r => r.json()); } catch(err){ /* none configured */ }
       const courtIds = courtsData ? Object.keys(courtsData) : [];
       const todayKey = dateKey(Date.now());
 
@@ -2011,8 +2011,8 @@
       const [busyFlags, legacyActive, scheduledData, historyData] = await Promise.all([
         Promise.all(courtIds.map(courtId => courtBusyMatchId(courtId))),
         getCurrentActiveMatch(),
-        fetchWithTimeout(DB_URL + '/scheduled.json', 6000).then(r => r.json()).catch(() => null),
-        fetchWithTimeout(DB_URL + '/history.json', 6000).then(r => r.json()).catch(() => null)
+        fetchWithTimeout(DB_URL + '/scheduled.json', 8000).then(r => r.json()).catch(() => null),
+        fetchWithTimeout(DB_URL + '/history.json', 8000).then(r => r.json()).catch(() => null)
       ]);
 
       const busyCourtsCount = busyFlags.filter(Boolean).length;
@@ -2338,13 +2338,18 @@
   // pointer" pattern the single-match architecture already uses for
   // /activeMatchId, so a court can never get permanently stuck "busy" just
   // because a pointer wasn't cleared somewhere.
-  async function courtBusyMatchId(courtId){
+  async function courtBusyMatchId(courtId, isRetry){
     try {
-      const activeId = await (await fetchWithTimeout(DB_URL + '/courts/' + courtId + '/activeMatchId.json', 4000)).json();
+      const activeId = await (await fetchWithTimeout(DB_URL + '/courts/' + courtId + '/activeMatchId.json', 8000)).json();
       if (!activeId) return null;
-      const s = await (await fetchWithTimeout(DB_URL + '/matches/' + activeId + '/state.json', 4000)).json();
+      const s = await (await fetchWithTimeout(DB_URL + '/matches/' + activeId + '/state.json', 8000)).json();
       return (s && s.matchStarted && !s.matchOver) ? activeId : null;
-    } catch(err){ return null; }
+    } catch(err){
+      // A single timeout/failure shouldn't silently make a real match vanish
+      // from the list — retry once before treating the court as free.
+      if (!isRetry) return courtBusyMatchId(courtId, true);
+      return null;
+    }
   }
   async function promoteScheduledMatch(schedId, sched){
     const newId = genId();
