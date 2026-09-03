@@ -1512,7 +1512,35 @@
   async function actOnMatch(targetMatchId, actionFn){
     await loadMatchIntoContext(targetMatchId);
     actionFn();
-    setTimeout(() => { if (document.getElementById('matchCentreLiveWrap')) refreshMatchCentreLive(); }, 500);
+    setTimeout(() => refreshOneLiveTile(targetMatchId), 500);
+  }
+  // Swap just the one tile that changed, in place — rebuilding the whole grid
+  // on every point tap caused a visible flash of "Checking..." across every
+  // court, not just the one being scored. Fetches this match's own state
+  // directly rather than trusting the shared global `state`, which could
+  // belong to a different match if the admin acted on several tiles quickly.
+  async function refreshOneLiveTile(matchId){
+    const wrap = document.getElementById('matchCentreLiveWrap');
+    if (!wrap) return;
+    const oldCard = wrap.querySelector('[data-match-id="' + matchId + '"]');
+    if (!oldCard) { refreshMatchCentreLive(); return; }
+    let s = null;
+    try {
+      s = await fetchWithTimeout(DB_URL + '/matches/' + matchId + '/state.json', 6000).then(r => r.json());
+    } catch(err){ return; } // leave the existing card as-is on a fetch failure
+    if (!s || !s.matchStarted || s.matchOver){
+      removeLiveTile(matchId);
+      return;
+    }
+    const newCard = await buildRichActiveCard(s.courtName, matchId, s);
+    if (oldCard.parentNode) oldCard.replaceWith(newCard);
+  }
+  function removeLiveTile(matchId){
+    const wrap = document.getElementById('matchCentreLiveWrap');
+    if (!wrap) return;
+    const card = wrap.querySelector('[data-match-id="' + matchId + '"]');
+    if (card) card.remove();
+    if (!wrap.children.length){ wrap.appendChild(emptyCard('No match currently in progress.')); }
   }
   // ---- Change Court ----
   let changingCourtMatchId = null;
@@ -1627,6 +1655,7 @@
   async function buildRichActiveCard(courtName, matchIdForCard, s){
     const card = document.createElement('div');
     card.className = 'receptionCard activeNowCard richActiveCard';
+    card.dataset.matchId = matchIdForCard;
 
     const header = document.createElement('div');
     header.className = 'activeCardHeader';
@@ -3395,7 +3424,7 @@
       target.classList.add('pulse');
     }
 
-    if (state.matchOver && !overlayDismissed){
+    if (state.matchOver && !overlayDismissed && document.body.classList.contains('show-scoreboard')){
       el.winTitle.textContent = state.winner ? (state.names[state.winner] + ' WINS') : 'MATCH ENDED';
       el.overlay.classList.add('show');
     } else {
@@ -3596,7 +3625,7 @@
     document.getElementById('confirmModal').classList.remove('show');
     resetMatch();
     el.settings.classList.remove('show');
-    if (document.getElementById('matchCentreLiveWrap')) setTimeout(refreshMatchCentreLive, 400);
+    if (document.getElementById('matchCentreLiveWrap')) setTimeout(() => refreshOneLiveTile(matchId), 400);
   });
 
   document.getElementById('newGameBtn').addEventListener('click', async (e) => {
@@ -3636,7 +3665,7 @@
     document.getElementById('confirmEndModal').classList.remove('show');
     endGameNow();
     el.settings.classList.remove('show');
-    if (document.getElementById('matchCentreLiveWrap')) setTimeout(refreshMatchCentreLive, 400);
+    if (document.getElementById('matchCentreLiveWrap')) setTimeout(() => removeLiveTile(matchId), 400);
   });
   document.getElementById('newMatchBtn').addEventListener('click', (e) => {
     e.stopPropagation(); resetMatch();
